@@ -220,7 +220,7 @@ export const useSession = create<SessionState & SessionActions>()((set, get) => 
       }
       if (error || !data.user) {
         return error?.message?.toLowerCase().includes('banned')
-          ? 'This account is disabled. Ask the admin to turn it back on.'
+          ? 'This account is waiting for the admin’s approval, or has been turned off. Ask the admin.'
           : 'That user ID and password don’t match. Check them and try again.'
       }
       set({ message: null })

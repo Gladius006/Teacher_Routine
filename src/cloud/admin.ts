@@ -8,6 +8,8 @@ export interface AdminUser {
   role: 'admin' | 'member'
   school_id: string | null
   disabled: boolean
+  /** Asked for an account and is waiting for approval. */
+  pending: boolean
   created_at: string
   last_sign_in_at: string | null
 }
@@ -80,6 +82,10 @@ export const resetPassword = (userId: string, password: string) => call({ action
 export const setDisabled = (userId: string, disabled: boolean) => call({ action: 'set_disabled', userId, disabled })
 
 export const deleteUser = (userId: string) => call({ action: 'delete', userId })
+
+export const approveUser = (userId: string) => call({ action: 'approve', userId })
+
+export const rejectUser = (userId: string) => call({ action: 'reject', userId })
 
 export async function updateUser(id: string, patch: { role?: 'admin' | 'member'; school_id?: string | null; display_name?: string }): Promise<void> {
   const sb = await supabase()

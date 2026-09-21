@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
-import { ArrowClockwise, ArrowRight, LockSimple, SignOut, Table } from '@phosphor-icons/react'
-import { Button, Field, Input, Shell } from '../../components/ui'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowClockwise, ArrowLeft, ArrowRight, CheckCircle, LockSimple, SignOut, Table } from '@phosphor-icons/react'
+import { Button, Field, Input, Select, Shell } from '../../components/ui'
 import { passwordError, usernameError } from '../../cloud/auth'
 import { useSession } from '../../cloud/session'
+import { listPublicSchools, requestAccount, type PublicSchool } from '../../cloud/signup'
 
 function Frame({ children, title, intro }: { children: ReactNode; title: string; intro: ReactNode }) {
   return (
@@ -31,6 +32,13 @@ export function LoadingScreen({ label = 'Opening Routine Builder…' }: { label?
 }
 
 export function LoginScreen() {
+  const [mode, setMode] = useState<'login' | 'request' | 'sent'>('login')
+  if (mode === 'request') return <RequestScreen onBack={() => setMode('login')} onSent={() => setMode('sent')} />
+  if (mode === 'sent') return <RequestSentScreen onBack={() => setMode('login')} />
+  return <SignInForm onRequest={() => setMode('request')} />
+}
+
+function SignInForm({ onRequest }: { onRequest: () => void }) {
   const signIn = useSession((s) => s.signIn)
   const message = useSession((s) => s.message)
   const [username, setUsername] = useState('')
@@ -68,7 +76,112 @@ export function LoginScreen() {
         <Button variant="primary" type="submit" disabled={busy} trailingIcon={<ArrowRight weight="bold" />} className="self-start">
           {busy ? 'Signing in…' : 'Sign In'}
         </Button>
+        <p className="border-t border-line pt-5 text-[14px] text-ink-2">
+          New teacher?{' '}
+          <button type="button" onClick={onRequest} className="font-medium text-accent underline-offset-4 hover:underline">
+            Request an account
+          </button>
+        </p>
       </form>
+    </Frame>
+  )
+}
+
+function RequestScreen({ onBack, onSent }: { onBack: () => void; onSent: () => void }) {
+  const [schools, setSchools] = useState<PublicSchool[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [schoolId, setSchoolId] = useState('')
+  const [tried, setTried] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    listPublicSchools().then(setSchools).catch((e: Error) => setLoadError(e.message))
+  }, [])
+
+  const nErr = !name.trim() ? 'Enter your name so the admin knows who you are.' : undefined
+  const uErr = usernameError(username)
+  const pErr = passwordError(password)
+  const cErr = confirm !== password ? 'The two passwords don’t match.' : undefined
+  const sErr = !schoolId ? 'Choose your school.' : undefined
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setTried(true)
+    const first = nErr ? 'req-name' : sErr ? 'req-school' : uErr ? 'req-user' : pErr ? 'req-pass' : cErr ? 'req-confirm' : null
+    if (first) {
+      document.getElementById(first)?.focus()
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const err = await requestAccount({ displayName: name, username, password, schoolId })
+    setBusy(false)
+    if (err) setError(err)
+    else onSent()
+  }
+
+  const noSchools = schools !== null && schools.length === 0
+  return (
+    <Frame
+      title="Request an account"
+      intro={<p>Pick your school and choose a user ID and password. Your admin checks the request and turns your account on. You can sign in after that.</p>}
+    >
+      <form onSubmit={submit} noValidate className="flex flex-col gap-6 p-6 md:p-8">
+        <Field label="Your name" htmlFor="req-name" error={tried ? nErr : undefined}>
+          <Input id="req-name" name="name" autoComplete="name" aria-invalid={tried && !!nErr} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field
+          label="School"
+          htmlFor="req-school"
+          error={tried ? sErr : undefined}
+          hint={loadError ?? (noSchools ? 'No schools have been added yet. Ask your admin to add yours first.' : undefined)}
+        >
+          <Select id="req-school" aria-invalid={tried && !!sErr} value={schoolId} disabled={!schools?.length} onChange={(e) => setSchoolId(e.target.value)}>
+            <option value="">{schools === null && !loadError ? 'Loading schools…' : 'Choose your school'}</option>
+            {schools?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="User ID" htmlFor="req-user" hint="Letters, numbers, dots, dashes or underscores. You’ll sign in with this." error={tried ? uErr : undefined}>
+          <Input id="req-user" name="username" autoComplete="username" spellCheck={false} autoCapitalize="none" aria-invalid={tried && !!uErr} value={username} onChange={(e) => setUsername(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <Field label="Password" htmlFor="req-pass" hint="At least 8 characters." error={tried ? pErr : undefined}>
+            <Input id="req-pass" name="new-password" type="password" autoComplete="new-password" aria-invalid={tried && !!pErr} value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          <Field label="Password again" htmlFor="req-confirm" error={tried ? cErr : undefined}>
+            <Input id="req-confirm" name="confirm-password" type="password" autoComplete="new-password" aria-invalid={tried && !!cErr} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          </Field>
+        </div>
+        <p aria-live="polite" className="-my-2 min-h-5 text-[13px] text-danger">{error}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" type="submit" disabled={busy || noSchools} trailingIcon={<ArrowRight weight="bold" />}>
+            {busy ? 'Sending…' : 'Send Request'}
+          </Button>
+          <Button variant="ghost" icon={<ArrowLeft weight="light" />} onClick={onBack}>Back to Sign In</Button>
+        </div>
+      </form>
+    </Frame>
+  )
+}
+
+function RequestSentScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <Frame
+      title="Request sent"
+      intro={<p>Your admin will check it and turn your account on. Then sign in with the user ID and password you just chose.</p>}
+    >
+      <div className="flex flex-col items-start gap-5 p-6 md:p-8">
+        <p className="flex items-start gap-3 text-[15px] text-ink-2">
+          <CheckCircle aria-hidden weight="fill" className="mt-0.5 shrink-0 text-xl text-accent" />
+          If it takes a while, remind your admin to look in the Admin tab under Waiting for approval.
+        </p>
+        <Button icon={<ArrowLeft weight="light" />} onClick={onBack}>Back to Sign In</Button>
+      </div>
     </Frame>
   )
 }

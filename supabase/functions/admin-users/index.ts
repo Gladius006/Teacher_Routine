@@ -1,11 +1,16 @@
 // Account management for Routine Builder. Runs on Supabase with the service-role key,
-// which never reaches the browser. Every call except `bootstrap` must come from an admin.
+// which never reaches the browser. Every call except `bootstrap` (first admin) and
+// `signup` (a locked account request) must come from an admin.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // Users sign in with a user ID; Supabase Auth needs an email, so each ID maps to one
 // that is never mailed. Must match USER_EMAIL_DOMAIN in src/cloud/auth.ts.
 const USER_EMAIL_DOMAIN = 'users.example.com'
 const USERNAME = /^[a-z0-9._-]{3,32}$/
+// Stops someone flooding the admin with fake requests.
+const MAX_PENDING_REQUESTS = 100
+// Long enough to mean 'until approved'.
+const LOCKED = '876000h'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +45,7 @@ async function log(userId: string | null, action: string, detail: Record<string,
   await admin.from('activity_log').insert({ user_id: userId, school_id: schoolId, action, detail })
 }
 
-async function createAccount(opts: { username: string; password: string; displayName: string; role: 'admin' | 'member'; schoolId: string | null }) {
+async function createAccount(opts: { username: string; password: string; displayName: string; role: 'admin' | 'member'; schoolId: string | null; pending?: boolean }) {
   const { data: existing } = await admin.from('profiles').select('id').eq('username', opts.username).maybeSingle()
   if (existing) throw new Fail(`The user ID "${opts.username}" is already taken.`)
   const { data, error } = await admin.auth.admin.createUser({
@@ -48,10 +53,12 @@ async function createAccount(opts: { username: string; password: string; display
     password: opts.password,
     email_confirm: true,
     user_metadata: { username: opts.username },
+    ...(opts.pending ? { ban_duration: LOCKED } : {}),
   })
   if (error || !data.user) throw new Fail(error?.message ?? 'Could not create the account.', 500)
   const { error: pErr } = await admin.from('profiles').insert({
     id: data.user.id, username: opts.username, display_name: opts.displayName, role: opts.role, school_id: opts.schoolId,
+    pending: !!opts.pending, disabled: !!opts.pending,
   })
   if (pErr) {
     await admin.auth.admin.deleteUser(data.user.id)
@@ -89,6 +96,23 @@ Deno.serve(async (req) => {
       return json({ id })
     }
 
+    // Anyone can ask for a teacher account; it stays locked until an admin approves it.
+    if (action === 'signup') {
+      const { count: admins } = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin')
+      if ((admins ?? 0) === 0) throw new Fail('This site isn’t set up yet. Ask your admin to finish setting it up first.', 409)
+      const { count: waiting } = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('pending', true)
+      if ((waiting ?? 0) >= MAX_PENDING_REQUESTS) throw new Fail('Too many requests are waiting for approval. Ask the admin to create your account.', 429)
+      const username = cleanUsername(body.username)
+      const displayName = String(body.displayName ?? '').trim().slice(0, 80)
+      if (!displayName) throw new Fail('Enter your name so the admin knows who you are.')
+      const schoolId = String(body.schoolId ?? '')
+      const { data: school } = await admin.from('schools').select('id').eq('id', schoolId).maybeSingle()
+      if (!school) throw new Fail('Choose your school from the list.')
+      const id = await createAccount({ username, password: cleanPassword(body.password), displayName, role: 'member', schoolId, pending: true })
+      await log(id, 'signup_request', { username, name: displayName }, schoolId)
+      return json({ ok: true })
+    }
+
     const callerId = await requireAdmin(req)
 
     switch (action) {
@@ -109,13 +133,32 @@ Deno.serve(async (req) => {
         await log(callerId, 'password_reset', { target: userId })
         return json({ ok: true })
       }
+      case 'approve': {
+        const userId = String(body.userId ?? '')
+        const { data: p } = await admin.from('profiles').select('username, school_id, pending').eq('id', userId).maybeSingle()
+        if (!p?.pending) throw new Fail('This request was already handled.')
+        const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: 'none' })
+        if (error) throw new Fail(error.message, 500)
+        await admin.from('profiles').update({ pending: false, disabled: false }).eq('id', userId)
+        await log(callerId, 'user_approve', { username: p.username }, p.school_id)
+        return json({ ok: true })
+      }
+      case 'reject': {
+        const userId = String(body.userId ?? '')
+        const { data: p } = await admin.from('profiles').select('username, school_id, pending').eq('id', userId).maybeSingle()
+        if (!p?.pending) throw new Fail('This request was already handled.')
+        const { error } = await admin.auth.admin.deleteUser(userId)
+        if (error) throw new Fail(error.message, 500)
+        await log(callerId, 'user_reject', { username: p.username }, p.school_id)
+        return json({ ok: true })
+      }
       case 'set_disabled': {
         const userId = String(body.userId ?? '')
         const disabled = Boolean(body.disabled)
         if (userId === callerId) throw new Fail('You cannot disable your own account.')
         const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: disabled ? '876000h' : 'none' })
         if (error) throw new Fail(error.message, 500)
-        await admin.from('profiles').update({ disabled }).eq('id', userId)
+        await admin.from('profiles').update(disabled ? { disabled } : { disabled, pending: false }).eq('id', userId)
         await log(callerId, disabled ? 'user_disable' : 'user_enable', { target: userId })
         return json({ ok: true })
       }

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowSquareOut, Buildings, Key, PencilSimple, Plus, Prohibit, Trash, UserPlus, Users } from '@phosphor-icons/react'
+import { ArrowSquareOut, Buildings, Check, Key, PencilSimple, Plus, Prohibit, Trash, UserPlus, Users } from '@phosphor-icons/react'
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Select, Shell, cx } from '../../components/ui'
 import {
-  countActivity, createSchool, createUser, deleteSchool, deleteUser, listActivity, listSchools, listUsers,
-  renameSchool, resetPassword, setDisabled, updateUser,
+  approveUser, countActivity, createSchool, createUser, deleteSchool, deleteUser, listActivity, listSchools, listUsers,
+  rejectUser, renameSchool, resetPassword, setDisabled, updateUser,
   type ActivityEntry, type AdminSchool, type AdminUser,
 } from '../../cloud/admin'
 import { passwordError, usernameError } from '../../cloud/auth'
@@ -53,6 +53,9 @@ function describe(e: ActivityEntry, userName: (id: string) => string): string {
     case 'school_create': return `Created school ${d.name ?? ''}`
     case 'school_rename': return `Renamed a school to ${d.name ?? ''}`
     case 'school_delete': return `Deleted school ${d.name ?? ''}`
+    case 'signup_request': return `Asked for an account as ${d.username ?? ''}`
+    case 'user_approve': return `Approved ${d.username ?? 'an account request'}`
+    case 'user_reject': return `Turned down the request from ${d.username ?? 'someone'}`
     default: return e.action.replace(/_/g, ' ')
   }
 }
@@ -64,6 +67,7 @@ const ACTION_FILTERS = [
   { value: 'generate', label: 'Routines generated' },
   { value: 'export_excel', label: 'Excel exports' },
   { value: 'user_create', label: 'Users created' },
+  { value: 'signup_request', label: 'Account requests' },
 ]
 
 export function AdminPage() {
@@ -117,8 +121,10 @@ export function AdminPage() {
 
   const userName = (id: string) => users.find((u) => u.id === id)?.username ?? 'a user'
   const schoolName = (id: string | null) => (id ? schools.find((s) => s.id === id)?.name ?? 'Deleted school' : 'No school')
-  const usersIn = (schoolId: string) => users.filter((u) => u.school_id === schoolId).length
-  const active = users.filter((u) => !u.disabled).length
+  const pending = users.filter((u) => u.pending)
+  const accounts = users.filter((u) => !u.pending)
+  const usersIn = (schoolId: string) => accounts.filter((u) => u.school_id === schoolId).length
+  const active = accounts.filter((u) => !u.disabled).length
 
   return (
     <>
@@ -139,11 +145,52 @@ export function AdminPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Tile label="Users" value={loading ? '…' : `${users.length}`} note={loading ? '' : `${active} active`} />
+        <Tile label="Users" value={loading ? '…' : `${accounts.length}`} note={loading ? '' : `${active} active${pending.length ? `, ${pending.length} waiting` : ''}`} />
         <Tile label="Schools" value={loading ? '…' : `${schools.length}`} note="" />
         <Tile label="Sign-ins" value={loading ? '…' : `${stats.logins}`} note="last 7 days" />
         <Tile label="Edits saved" value={loading ? '…' : `${stats.edits}`} note="last 7 days" />
       </div>
+
+      {pending.length > 0 && (
+        <Shell as="section" className="animate-rise mb-6">
+          <div className="p-5 md:p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-lg font-semibold tracking-tight">Waiting for approval</h2>
+              <Badge tone="warn">{pending.length}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-ink-2">These people asked for an account. Check the school is right, then approve or turn them down.</p>
+            <ul className="mt-4 divide-y divide-line">
+              {pending.map((u) => (
+                <li key={u.id} className="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{u.display_name || u.username}</p>
+                    <p className="font-mono text-xs text-ink-3">{u.username}<span className="font-sans">. Asked {ago(u.created_at)}.</span></p>
+                  </div>
+                  <Select
+                    aria-label={`School for ${u.username}`}
+                    value={u.school_id ?? ''}
+                    onChange={(e) => {
+                      const school_id = e.target.value || null
+                      void run(() => updateUser(u.id, { school_id }))
+                    }}
+                  >
+                    <option value="">No school</option>
+                    {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="primary" icon={<Check weight="bold" />} onClick={() => void run(() => approveUser(u.id), `${u.username} can now sign in.`)}>
+                      Approve
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void run(() => rejectUser(u.id), `Turned down the request from ${u.username}.`)}>
+                      Turn Down
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Shell>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         {/* Schools */}
@@ -195,7 +242,7 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {users.map((u) => {
+                    {accounts.map((u) => {
                       const self = u.id === me?.id
                       return (
                         <tr key={u.id} className={cx(u.disabled && 'opacity-60')}>

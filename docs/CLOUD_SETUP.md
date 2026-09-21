@@ -56,6 +56,12 @@ Then, in the **Admin** tab:
 2. **Add User** for each teacher: user ID, a starting password, their school, and role (Teacher or Admin).
 3. Give each person their user ID and password.
 
+### Teachers can also ask for an account
+
+On the sign-in page, **Request an account** lets a teacher pick their school and choose a user ID and password. The account is created **locked**. It appears in **Admin → Waiting for approval**, where you can fix the school if needed and **Approve** or **Turn Down** it. Until you approve, they can't sign in.
+
+Only school names are visible on that form. Everything else about a school stays hidden until someone signs in. At most 100 requests can wait at once, which stops anyone from flooding the list.
+
 ## What each role can do
 
 | | Teacher | Admin |
@@ -69,7 +75,7 @@ These rules are enforced by the database itself (row-level security), not just b
 
 ## What is recorded in the activity log
 
-Sign-ins and sign-outs, each saved edit (and which parts changed: bell schedule, subjects, teachers, classes), routines generated, Excel exports, prints, backup downloads and uploads, loading the sample, clearing data, and every admin action (users created, passwords reset, users disabled or deleted, schools created, renamed or deleted).
+Account requests, approvals and refusals, sign-ins and sign-outs, each saved edit (and which parts changed: bell schedule, subjects, teachers, classes), routines generated, Excel exports, prints, backup downloads and uploads, loading the sample, clearing data, and every admin action (users created, passwords reset, users disabled or deleted, schools created, renamed or deleted).
 
 ## Good to know
 
