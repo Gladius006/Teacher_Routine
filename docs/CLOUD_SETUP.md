@@ -11,7 +11,7 @@ It uses [Supabase](https://supabase.com) (free plan is enough for a school).
    - **Project URL**, like `https://abcdxyz.supabase.co`
    - **Publishable key** (or the legacy **anon public** key). This key is designed to be public; the database rules decide what each person can see.
 3. In **Authentication → Sign In / Providers → Email**, turn **off** "Confirm email". (Accounts are created by the admin with user IDs, not real email addresses.)
-4. In **Authentication → Sign In / Providers**, turn **off** "Allow new users to sign up". Only the admin creates accounts.
+4. In **Authentication → Sign In / Providers**, turn **off** "Allow new users to sign up". Accounts are only made through the site: by the admin, or as requests the admin approves.
 
 ## 2. Create the tables and the account function
 
