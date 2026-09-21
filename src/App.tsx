@@ -246,7 +246,7 @@ function SchoolBar() {
                 onChange={(e) => void openSchool(e.target.value || null)}
                 className="h-8 max-w-56 truncate rounded-full bg-surface px-3 text-[13px] text-ink ring-1 ring-line-strong"
               >
-                {schools.length === 0 && <option value="">No schools yet</option>}
+                {!schoolId && <option value="">{schools.length ? 'Choose a school' : 'No schools yet'}</option>}
                 {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>

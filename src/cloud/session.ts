@@ -154,7 +154,10 @@ export const useSession = create<SessionState & SessionActions>()((set, get) => 
     const { data: profile, error } = await sb.from('profiles').select('id, username, display_name, role, school_id, disabled').eq('id', userId).maybeSingle()
     if (error || !profile) {
       await sb.auth.signOut()
-      reset('This account has no profile yet. Ask the admin to check it.')
+      reset('This account no longer exists. Ask the admin to check it.')
+      // If that was the only admin, offer admin setup again instead of a sign-in nobody can use.
+      const { data: needs } = await sb.rpc('needs_setup')
+      if (needs) set({ status: 'setup' })
       return
     }
     if (profile.disabled) {
