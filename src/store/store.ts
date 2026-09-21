@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { CLOUD_ENABLED } from '../cloud/client'
 import { emptySchool } from '../engine/sample'
 import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
 
@@ -22,6 +23,8 @@ interface State {
   replaceData: (data: SchoolData) => void
   setRoutine: (r: Routine | null) => void
   setTheme: (t: ThemePref) => void
+  /** Replaces everything with a school loaded from the cloud. */
+  loadCloud: (data: SchoolData, routine: Routine | null, started: boolean) => void
 }
 
 const upsert = <T extends { id: Id }>(list: T[], item: T) =>
@@ -85,8 +88,12 @@ export const useStore = create<State>()(
       replaceData: (data) => set({ data, routine: null, started: true }),
       setRoutine: (routine) => set({ routine, started: true }),
       setTheme: (theme) => set({ theme }),
+      loadCloud: (data, routine, started) => set({ data, routine, started }),
     }),
-    { name: 'routine-builder', version: 1 },
+    CLOUD_ENABLED
+      ? // Signed-in mode: school data lives in the database and is never left in this browser.
+        { name: 'routine-builder-prefs', version: 1, partialize: (s) => ({ theme: s.theme }) }
+      : { name: 'routine-builder', version: 1 },
   ),
 )
 

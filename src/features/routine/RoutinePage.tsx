@@ -11,6 +11,7 @@ import { RoutineGrid, type GridCell } from './RoutineGrid'
 import { useGenerator } from './useGenerator'
 import { PrintSheet } from './PrintSheet'
 import { exportRoutineToExcel } from './exportExcel'
+import { logActivity } from '../../cloud/session'
 
 type View = 'class' | 'teacher' | 'assign'
 
@@ -45,6 +46,7 @@ export function RoutinePage() {
     setExportError(null)
     try {
       await exportRoutineToExcel(data, routine)
+      void logActivity('export_excel', { lessons: routine.stats.lessons })
     } catch {
       setExportError('Could not create the Excel file. Try again, or use Print instead.')
     } finally {
@@ -56,6 +58,7 @@ export function RoutinePage() {
     if (!print) return
     const done = () => setPrint(null)
     window.addEventListener('afterprint', done)
+    void logActivity('print', { what: print })
     const t = window.setTimeout(() => window.print(), 50)
     return () => { window.clearTimeout(t); window.removeEventListener('afterprint', done) }
   }, [print])

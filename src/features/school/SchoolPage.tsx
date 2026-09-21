@@ -6,6 +6,8 @@ import { emptySchool, sampleSchool } from '../../engine/sample'
 import { hashInputs } from '../../engine/schedule'
 import { exportSchool, importSchool } from '../../store/io'
 import { useStore } from '../../store/store'
+import { CLOUD_ENABLED } from '../../cloud/client'
+import { logActivity } from '../../cloud/session'
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -43,7 +45,7 @@ function Welcome() {
           Add your teachers and classes. The routine is built so nobody is double-booked and everyone rests after a class.
         </p>
         <div className="mt-9 flex flex-wrap gap-3">
-          <Button variant="primary" trailingIcon={<ArrowRight weight="bold" />} onClick={() => replaceData(sampleSchool())}>
+          <Button variant="primary" trailingIcon={<ArrowRight weight="bold" />} onClick={() => { replaceData(sampleSchool()); void logActivity('load_sample', {}) }}>
             Try a Sample School
           </Button>
           <Button onClick={() => replaceData(emptySchool())}>Start From Scratch</Button>
@@ -237,12 +239,14 @@ function DataCard() {
     a.click()
     URL.revokeObjectURL(url)
     setMessage({ tone: 'ok', text: 'Backup file saved.' })
+    void logActivity('download_backup', {})
   }
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
     try {
       replaceData(importSchool(await file.text()))
+      void logActivity('import_backup', { file: file.name })
       setMessage({ tone: 'ok', text: `Loaded ${file.name}.` })
     } catch (err) {
       setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Could not read that file.' })
@@ -255,7 +259,9 @@ function DataCard() {
       <div className="p-6 md:p-8">
         <h2 className="text-xl font-semibold tracking-tight">Your data</h2>
         <p className="mt-1 text-[15px] leading-relaxed text-ink-2">
-          Saved in this browser automatically. Download a backup to move it to another computer.
+          {CLOUD_ENABLED
+            ? 'Saved to your school’s account automatically. A backup file is a copy you can keep or open elsewhere.'
+            : 'Saved in this browser automatically. Download a backup to move it to another computer.'}
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button size="sm" icon={<DownloadSimple weight="light" />} onClick={download}>Download Backup</Button>
@@ -274,7 +280,7 @@ function DataCard() {
       <ConfirmDialog
         open={confirm === 'sample'}
         onClose={() => setConfirm(null)}
-        onConfirm={() => replaceData(sampleSchool())}
+        onConfirm={() => { replaceData(sampleSchool()); void logActivity('load_sample', {}) }}
         title="Replace your data with the sample school?"
         confirmLabel="Load Sample"
       >
@@ -283,7 +289,7 @@ function DataCard() {
       <ConfirmDialog
         open={confirm === 'clear'}
         onClose={() => setConfirm(null)}
-        onConfirm={() => replaceData({ ...emptySchool(), settings: data.settings })}
+        onConfirm={() => { replaceData({ ...emptySchool(), settings: data.settings }); void logActivity('clear', {}) }}
         title="Clear all subjects, teachers and classes?"
         confirmLabel="Clear Everything"
       >

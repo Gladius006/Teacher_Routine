@@ -6,9 +6,11 @@ A web app that builds a school's weekly routine. It matches teachers to subjects
 - Junior classes (5 to 7 by default, adjustable) can go to any teacher. A teacher with the skill is still preferred.
 - The lunch break counts as rest.
 - You can pin a specific teacher to a class and subject; the rest is chosen automatically.
-- Views by class, by teacher, and "who teaches what", plus a workload heatmap and print layouts.
+- Views by class, by teacher, and "who teaches what", plus a workload heatmap, print layouts and **Excel export**.
+- Each subject can be limited to certain classes (e.g. Art only in 5 to 7).
+- Optional **sign-in and cloud saving** with an admin dashboard (schools, users, activity log). See [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md).
 
-Everything runs in the browser. Data is saved in the browser automatically; use **School > Download Backup** to move it between computers.
+Without cloud setup, everything runs in the browser and data is saved there automatically; use **School > Download Backup** to move it between computers.
 
 ## Run it
 

@@ -1,0 +1,4 @@
+# The admin-users function checks the caller itself (admin only, except first-run setup),
+# so the gateway's JWT check is turned off. This also lets setup run before anyone signs in.
+[functions.admin-users]
+verify_jwt = false

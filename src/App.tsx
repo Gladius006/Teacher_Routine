@@ -1,16 +1,23 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpenText, Buildings, ChalkboardTeacher, ChartBar, Desktop, Moon, Sun, Table, UsersThree } from '@phosphor-icons/react'
-import { cx } from './components/ui'
+import {
+  BookOpenText, Buildings, ChalkboardTeacher, ChartBar, CheckCircle, CloudArrowUp, CloudSlash, Desktop, Moon,
+  ShieldCheck, SignOut, Sun, Table, UsersThree, Warning,
+} from '@phosphor-icons/react'
+import { Button, cx } from './components/ui'
 import { hashInputs } from './engine/schedule'
 import { useStore, type ThemePref } from './store/store'
+import { CLOUD_ENABLED } from './cloud/client'
+import { useSession, type SaveState } from './cloud/session'
 import { SchoolPage } from './features/school/SchoolPage'
 import { SubjectsPage } from './features/subjects/SubjectsPage'
 import { TeachersPage } from './features/teachers/TeachersPage'
 import { ClassesPage } from './features/classes/ClassesPage'
 import { RoutinePage } from './features/routine/RoutinePage'
 import { WorkloadPage } from './features/workload/WorkloadPage'
+import { AdminEmpty, AdminPage } from './features/admin/AdminPage'
+import { LoadingScreen, LoginScreen, NoSchoolScreen, SetupScreen, UnreachableScreen } from './features/auth/AuthScreens'
 
-export type Tab = 'school' | 'subjects' | 'teachers' | 'classes' | 'routine' | 'workload'
+export type Tab = 'school' | 'subjects' | 'teachers' | 'classes' | 'routine' | 'workload' | 'admin'
 
 const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'school', label: 'School', icon: <Buildings weight="light" /> },
@@ -20,10 +27,11 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'routine', label: 'Routine', icon: <Table weight="light" /> },
   { id: 'workload', label: 'Workload', icon: <ChartBar weight="light" /> },
 ]
+const ADMIN_TAB = { id: 'admin' as Tab, label: 'Admin', icon: <ShieldCheck weight="light" /> }
 
 const readTab = (): Tab => {
   const h = window.location.hash.replace('#', '').split('?')[0] as Tab
-  return TABS.some((t) => t.id === h) ? h : 'school'
+  return [...TABS, ADMIN_TAB].some((t) => t.id === h) ? h : 'school'
 }
 
 function useTab(): Tab {
@@ -60,23 +68,44 @@ const THEME_ICON: Record<ThemePref, ReactNode> = {
 const THEME_LABEL: Record<ThemePref, string> = { system: 'Theme: match device', light: 'Theme: light', dark: 'Theme: dark' }
 
 export function App() {
+  const theme = useStore((s) => s.theme)
+  const status = useSession((s) => s.status)
+  useApplyTheme(theme)
+
+  useEffect(() => { void useSession.getState().init() }, [])
+
+  if (status === 'loading') return <LoadingScreen />
+  if (status === 'unreachable') return <UnreachableScreen />
+  if (status === 'setup') return <SetupScreen />
+  if (status === 'signedOut') return <LoginScreen />
+  if (status === 'noSchool') return <NoSchoolScreen />
+  return <Workspace />
+}
+
+function Workspace() {
   const tab = useTab()
   const theme = useStore((s) => s.theme)
   const setTheme = useStore((s) => s.setTheme)
   const data = useStore((s) => s.data)
   const routine = useStore((s) => s.routine)
-  useApplyTheme(theme)
+  const status = useSession((s) => s.status)
+  const profile = useSession((s) => s.profile)
+  const schoolId = useSession((s) => s.schoolId)
+  const isAdmin = profile?.role === 'admin'
+  const tabs = isAdmin ? [...TABS, ADMIN_TAB] : TABS
+  const current: Tab = tab === 'admin' && !isAdmin ? 'school' : tab
+  const noSchoolOpen = CLOUD_ENABLED && !schoolId
 
   const stale = routine !== null && routine.inputHash !== hashInputs(data)
 
   // Keep the current tab visible when the nav scrolls sideways on small screens.
   useEffect(() => {
     document.querySelector('nav a[aria-current="page"]')?.scrollIntoView({ inline: 'center', block: 'nearest' })
-  }, [tab])
+  }, [current])
 
   useEffect(() => {
-    document.title = `${TABS.find((t) => t.id === tab)!.label} · Routine Builder`
-  }, [tab])
+    document.title = `${tabs.find((t) => t.id === current)?.label ?? 'School'} · Routine Builder`
+  }, [current, tabs])
 
   return (
     <div className="min-h-[100dvh]">
@@ -91,11 +120,11 @@ export function App() {
             <span aria-hidden className="flex size-8 items-center justify-center rounded-full bg-accent text-accent-ink">
               <Table weight="bold" className="text-base" />
             </span>
-            <span className="hidden text-[15px] font-semibold tracking-tight lg:inline">Routine Builder</span>
+            <span className="hidden text-[15px] font-semibold tracking-tight xl:inline">Routine Builder</span>
           </a>
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:justify-center">
-            {TABS.map((t) => {
-              const active = t.id === tab
+            {tabs.map((t) => {
+              const active = t.id === current
               return (
                 <a
                   key={t.id}
@@ -115,6 +144,7 @@ export function App() {
               )
             })}
           </div>
+          {CLOUD_ENABLED && <SaveIndicator />}
           <button
             type="button"
             onClick={() => setTheme(THEME_NEXT[theme])}
@@ -124,19 +154,113 @@ export function App() {
           >
             {THEME_ICON[theme]}
           </button>
+          {CLOUD_ENABLED && <AccountButton />}
         </nav>
+        {CLOUD_ENABLED && <SchoolBar />}
       </div>
 
       <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 pb-24 outline-none md:px-8">
-        <div key={tab}>
-          {tab === 'school' && <SchoolPage />}
-          {tab === 'subjects' && <SubjectsPage />}
-          {tab === 'teachers' && <TeachersPage />}
-          {tab === 'classes' && <ClassesPage />}
-          {tab === 'routine' && <RoutinePage />}
-          {tab === 'workload' && <WorkloadPage />}
-        </div>
+        {status === 'loadingSchool' ? (
+          <LoadingScreen label="Opening school…" />
+        ) : (
+          <div key={`${current}:${schoolId ?? ''}`}>
+            {current === 'admin' ? (
+              <AdminPage />
+            ) : noSchoolOpen ? (
+              <div className="pt-16"><AdminEmpty /></div>
+            ) : (
+              <>
+                {current === 'school' && <SchoolPage />}
+                {current === 'subjects' && <SubjectsPage />}
+                {current === 'teachers' && <TeachersPage />}
+                {current === 'classes' && <ClassesPage />}
+                {current === 'routine' && <RoutinePage />}
+                {current === 'workload' && <WorkloadPage />}
+              </>
+            )}
+          </div>
+        )}
       </main>
+    </div>
+  )
+}
+
+const SAVE_LABEL: Record<SaveState, { text: string; icon: ReactNode; tone: string }> = {
+  saved: { text: 'Saved', icon: <CheckCircle weight="light" />, tone: 'text-ink-3' },
+  pending: { text: 'Saving…', icon: <CloudArrowUp weight="light" />, tone: 'text-ink-3' },
+  saving: { text: 'Saving…', icon: <CloudArrowUp weight="light" />, tone: 'text-ink-3' },
+  error: { text: 'Offline, retrying', icon: <CloudSlash weight="light" />, tone: 'text-warn' },
+  conflict: { text: 'Not saved', icon: <Warning weight="light" />, tone: 'text-danger' },
+}
+
+function SaveIndicator() {
+  const save = useSession((s) => s.save)
+  const schoolId = useSession((s) => s.schoolId)
+  if (!schoolId) return null
+  const l = SAVE_LABEL[save]
+  return (
+    <span role="status" aria-live="polite" className={cx('hidden shrink-0 items-center gap-1.5 px-2 text-[13px] lg:flex', l.tone)}>
+      <span aria-hidden className="text-base">{l.icon}</span>
+      {l.text}
+    </span>
+  )
+}
+
+function AccountButton() {
+  const profile = useSession((s) => s.profile)
+  const signOut = useSession((s) => s.signOut)
+  return (
+    <button
+      type="button"
+      onClick={() => void signOut()}
+      title={`Signed in as ${profile?.username ?? ''}. Sign out.`}
+      aria-label={`Sign out ${profile?.display_name || profile?.username || ''}`}
+      className="flex h-10 shrink-0 items-center gap-2 rounded-full pl-3 pr-3 text-sm text-ink-2 transition-colors hover:bg-shell hover:text-ink"
+    >
+      <span className="hidden max-w-32 truncate font-medium lg:inline">{profile?.display_name || profile?.username}</span>
+      <SignOut aria-hidden weight="light" className="text-xl" />
+    </button>
+  )
+}
+
+/** Which school is open, a switcher for admins, and the save-conflict banner. */
+function SchoolBar() {
+  const profile = useSession((s) => s.profile)
+  const schools = useSession((s) => s.schools)
+  const schoolId = useSession((s) => s.schoolId)
+  const save = useSession((s) => s.save)
+  const openSchool = useSession((s) => s.openSchool)
+  const reloadLatest = useSession((s) => s.reloadLatest)
+  const isAdmin = profile?.role === 'admin'
+  const name = schools.find((s) => s.id === schoolId)?.name
+
+  return (
+    <div className="mx-auto mt-2 flex max-w-[1400px] flex-col gap-2 px-2">
+      {(isAdmin || name) && (
+        <div className="flex items-center justify-end gap-2 text-[13px] text-ink-2">
+          {isAdmin ? (
+            <label className="flex items-center gap-2">
+              <span>School</span>
+              <select
+                value={schoolId ?? ''}
+                onChange={(e) => void openSchool(e.target.value || null)}
+                className="h-8 max-w-56 truncate rounded-full bg-surface px-3 text-[13px] text-ink ring-1 ring-line-strong"
+              >
+                {schools.length === 0 && <option value="">No schools yet</option>}
+                {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+          ) : (
+            <span>{name}</span>
+          )}
+        </div>
+      )}
+      {save === 'conflict' && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-core bg-danger-soft px-4 py-3 text-sm text-danger shadow-soft">
+          <p className="flex items-center gap-2"><Warning aria-hidden weight="light" className="text-lg" />Someone else saved changes to this school while you were editing, so your latest change wasn’t saved.</p>
+          <Button size="sm" variant="secondary" onClick={() => void reloadLatest()}>Load Their Version</Button>
+        </div>
+      )}
     </div>
   )
 }
