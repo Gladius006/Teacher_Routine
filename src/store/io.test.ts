@@ -16,3 +16,16 @@ describe('import/export', () => {
     expect(() => importSchool(JSON.stringify(data))).toThrow(/teachers/)
   })
 })
+
+describe('older backup files', () => {
+  it('load when subjects have no grade list', () => {
+    const data = sampleSchool()
+    data.subjects.forEach((s) => delete s.grades)
+    expect(importSchool(exportSchool(data)).subjects[0].grades).toBeUndefined()
+  })
+  it('reject a broken grade list', () => {
+    const data = sampleSchool() as unknown as { subjects: { grades: unknown }[] }
+    data.subjects[0].grades = ['nine']
+    expect(() => importSchool(JSON.stringify(data))).toThrow(/subjects/)
+  })
+})

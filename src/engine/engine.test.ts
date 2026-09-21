@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { assignTeachers, isJunior, tierOf } from './assign'
 import { blockLengths, isAdjacent, restCapacityPerDay } from './blocks'
 import { evaluate, teacherSlots } from './evaluate'
+import { formatGrades, isOffered, misplacedSubjects } from './grades'
 import { placeLessons } from './place'
 import { mulberry32, randInt } from './rng'
 import { DEFAULT_SETTINGS, sampleSchool } from './sample'
@@ -203,5 +204,34 @@ describe('generateRoutine', () => {
     const h = hashInputs(data)
     data.teachers[0].maxPerDay = 5
     expect(hashInputs(data)).not.toBe(h)
+  })
+})
+
+describe('subject grades', () => {
+  it('formats grade lists as ranges', () => {
+    expect(formatGrades([5, 6, 7])).toBe('5-7')
+    expect(formatGrades([12, 5, 6, 9, 11])).toBe('5-6, 9, 11-12')
+    expect(formatGrades([8])).toBe('8')
+  })
+
+  it('treats subjects without a grade list as taught everywhere', () => {
+    expect(isOffered({ id: 'x', name: 'X', code: 'X', color: '#000' }, 3)).toBe(true)
+    expect(isOffered({ id: 'x', name: 'X', code: 'X', color: '#000', grades: [5, 6] }, 9)).toBe(false)
+  })
+
+  it('the sample school has no subject in a class it is not taught in', () => {
+    expect(misplacedSubjects(sampleSchool())).toEqual([])
+  })
+
+  it('leaves out and reports a subject placed in a class it is not taught in', () => {
+    const data = sampleSchool()
+    const nineA = data.classes.find((c) => c.id === 'c-9A')!
+    nineA.curriculum.push({ subjectId: 's-art', periods: 2 })
+    const r = generateRoutine(data, { seed: 3, maxIterations: 20_000 })
+    const issue = r.issues.find((i) => i.kind === 'notOffered')
+    expect(issue).toMatchObject({ classId: 'c-9A', subjectId: 's-art', severity: 'warning' })
+    expect(issue!.message).toContain('5-7')
+    expect(r.grid['c-9A'].some((c) => c?.subjectId === 's-art')).toBe(false)
+    expect(r.assignments.some((a) => a.classId === 'c-9A' && a.subjectId === 's-art')).toBe(false)
   })
 })

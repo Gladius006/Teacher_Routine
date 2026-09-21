@@ -17,6 +17,8 @@ export interface Subject {
   name: string
   code: string
   color: string
+  /** Class grades this subject is taught in. Missing = every grade (files saved before this option). */
+  grades?: number[]
 }
 
 export interface Teacher {
@@ -79,6 +81,7 @@ export type IssueKind =
   | 'outsideSkill'
   | 'overCapacity'
   | 'pinInvalid'
+  | 'notOffered'
 
 export type Severity = 'error' | 'warning' | 'info'
 

@@ -10,20 +10,22 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultMaxPerWeek: 30,
 }
 
+const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i)
+
 const subjects: Subject[] = [
-  { id: 's-eng', name: 'English', code: 'ENG', color: '#3b6fd8' },
-  { id: 's-ben', name: 'Bengali', code: 'BEN', color: '#c2410c' },
-  { id: 's-hin', name: 'Hindi', code: 'HIN', color: '#b45309' },
-  { id: 's-math', name: 'Mathematics', code: 'MATH', color: '#6d4fd1' },
-  { id: 's-sci', name: 'Science', code: 'SCI', color: '#0f8a6a' },
-  { id: 's-phy', name: 'Physics', code: 'PHY', color: '#0e7490' },
-  { id: 's-chem', name: 'Chemistry', code: 'CHEM', color: '#be185d' },
-  { id: 's-bio', name: 'Biology', code: 'BIO', color: '#4d7c0f' },
-  { id: 's-hist', name: 'History', code: 'HIST', color: '#92400e' },
-  { id: 's-geo', name: 'Geography', code: 'GEO', color: '#047857' },
-  { id: 's-comp', name: 'Computer', code: 'COMP', color: '#475569' },
-  { id: 's-pe', name: 'Physical Ed.', code: 'PE', color: '#dc2626' },
-  { id: 's-art', name: 'Art', code: 'ART', color: '#a21caf' },
+  { id: 's-eng', name: 'English', code: 'ENG', color: '#3b6fd8', grades: range(5, 12) },
+  { id: 's-ben', name: 'Bengali', code: 'BEN', color: '#c2410c', grades: range(5, 10) },
+  { id: 's-hin', name: 'Hindi', code: 'HIN', color: '#b45309', grades: range(5, 8) },
+  { id: 's-math', name: 'Mathematics', code: 'MATH', color: '#6d4fd1', grades: range(5, 12) },
+  { id: 's-sci', name: 'Science', code: 'SCI', color: '#0f8a6a', grades: range(5, 8) },
+  { id: 's-phy', name: 'Physics', code: 'PHY', color: '#0e7490', grades: range(9, 12) },
+  { id: 's-chem', name: 'Chemistry', code: 'CHEM', color: '#be185d', grades: range(9, 12) },
+  { id: 's-bio', name: 'Biology', code: 'BIO', color: '#4d7c0f', grades: range(9, 12) },
+  { id: 's-hist', name: 'History', code: 'HIST', color: '#92400e', grades: range(5, 10) },
+  { id: 's-geo', name: 'Geography', code: 'GEO', color: '#047857', grades: range(5, 10) },
+  { id: 's-comp', name: 'Computer', code: 'COMP', color: '#475569', grades: range(5, 12) },
+  { id: 's-pe', name: 'Physical Ed.', code: 'PE', color: '#dc2626', grades: range(5, 12) },
+  { id: 's-art', name: 'Art', code: 'ART', color: '#a21caf', grades: range(5, 7) },
 ]
 
 const T = (id: string, name: string, code: string, primary: string[], secondary: string[] = []): Teacher => ({
@@ -65,7 +67,7 @@ const teachers: Teacher[] = [
 
 type Plan = [string, number][]
 const junior: Plan = [['s-eng', 7], ['s-ben', 6], ['s-hin', 4], ['s-math', 7], ['s-sci', 6], ['s-hist', 3], ['s-geo', 3], ['s-comp', 2], ['s-pe', 3], ['s-art', 2]]
-const middle: Plan = [['s-eng', 7], ['s-ben', 6], ['s-hin', 3], ['s-math', 8], ['s-sci', 7], ['s-hist', 3], ['s-geo', 3], ['s-comp', 2], ['s-pe', 2], ['s-art', 1]]
+const middle: Plan = [['s-eng', 7], ['s-ben', 6], ['s-hin', 3], ['s-math', 8], ['s-sci', 7], ['s-hist', 3], ['s-geo', 3], ['s-comp', 2], ['s-pe', 2]]
 const secondary: Plan = [['s-eng', 7], ['s-ben', 6], ['s-math', 8], ['s-phy', 4], ['s-chem', 4], ['s-bio', 4], ['s-hist', 3], ['s-geo', 3], ['s-comp', 2], ['s-pe', 2]]
 const higher: Plan = [['s-eng', 6], ['s-math', 8], ['s-phy', 7], ['s-chem', 7], ['s-bio', 6], ['s-comp', 4], ['s-pe', 2]]
 

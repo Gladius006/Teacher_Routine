@@ -3,6 +3,7 @@ import { CopySimple, PencilSimple, Plus, Trash, UsersThree, X } from '@phosphor-
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Select, Shell, Stepper, cx } from '../../components/ui'
 import { className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
+import { formatGrades, isOffered } from '../../engine/grades'
 import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -57,7 +58,9 @@ export function ClassesPage() {
               </div>
               <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {list.map((c) => {
-                  const used = c.curriculum.reduce((n, i) => n + i.periods, 0)
+                  const misplaced = c.curriculum.filter((i) => !isOffered(subjectById.get(i.subjectId), c.grade))
+                  const valid = c.curriculum.filter((i) => isOffered(subjectById.get(i.subjectId), c.grade))
+                  const used = valid.reduce((n, i) => n + i.periods, 0)
                   const over = used > slots
                   return (
                     <li key={c.id}>
@@ -78,10 +81,15 @@ export function ClassesPage() {
                               <IconButton label={`Delete ${className(c)}`} className="hover:text-danger" onClick={() => setDeleting(c)}><Trash weight="light" /></IconButton>
                             </div>
                           </div>
-                          <CompositionBar items={c.curriculum} slots={slots} byId={subjectById} />
+                          <CompositionBar items={valid} slots={slots} byId={subjectById} />
                           {over && <p className="mt-2 text-[13px] text-danger">{used - slots} more than the week has. Remove some periods.</p>}
+                          {misplaced.length > 0 && (
+                            <p className="mt-2 text-[13px] leading-snug text-warn">
+                              {misplaced.map((i) => subjectById.get(i.subjectId)?.name).join(', ')} {misplaced.length === 1 ? 'is' : 'are'} not taught in class {c.grade} and will be left out. Edit this class to remove {misplaced.length === 1 ? 'it' : 'them'}.
+                            </p>
+                          )}
                           <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-                            {c.curriculum.map((i) => {
+                            {valid.map((i) => {
                               const s = subjectById.get(i.subjectId)
                               return s ? (
                                 <li key={i.subjectId} className="flex items-center gap-1.5 text-ink-2">
@@ -158,7 +166,9 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? [])
   const [tried, setTried] = useState(false)
   const slots = slotsPerWeek(settings)
-  const used = items.reduce((n, i) => n + i.periods, 0)
+  const subjectById = new Map(subjects.map((s) => [s.id, s]))
+  const offered = (id: string) => isOffered(subjectById.get(id), grade)
+  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0)
   const junior = grade <= settings.juniorMaxGrade
 
   const sectionError = !section.trim()
@@ -167,7 +177,8 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
       ? `Class ${grade}${section.trim()} already exists.`
       : undefined
 
-  const unused = subjects.filter((s) => !items.some((i) => i.subjectId === s.id))
+  const available = subjects.filter((s) => isOffered(s, grade))
+  const unused = available.filter((s) => !items.some((i) => i.subjectId === s.id))
   const update = (idx: number, patch: Partial<CurriculumItem>) => setItems((xs) => xs.map((x, i) => (i === idx ? { ...x, ...patch } : x)))
 
   const submit = (e: React.FormEvent) => {
@@ -214,8 +225,8 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
               return (
                 <li key={idx} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-core bg-shell/60 p-2 sm:grid-cols-[minmax(0,1.3fr)_auto_minmax(0,1.3fr)_auto]">
                   <Select aria-label="Subject" value={item.subjectId} onChange={(e) => update(idx, { subjectId: e.target.value, pinnedTeacherId: null })}>
-                    {subjects.filter((s) => s.id === item.subjectId || !items.some((i) => i.subjectId === s.id)).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                    {subjects.filter((s) => s.id === item.subjectId || (isOffered(s, grade) && !items.some((i) => i.subjectId === s.id))).map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}{isOffered(s, grade) ? '' : ` (not taught in class ${grade})`}</option>
                     ))}
                   </Select>
                   <Stepper label={`${subjects.find((s) => s.id === item.subjectId)?.name ?? 'subject'} periods per week`} value={item.periods} min={1} max={slots} onChange={(n) => update(idx, { periods: n })} />
@@ -229,6 +240,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
                   <IconButton label="Remove subject" className="col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto" onClick={() => setItems((xs) => xs.filter((_, i) => i !== idx))}>
                     <X weight="light" />
                   </IconButton>
+                  {!offered(item.subjectId) && (
+                    <p className="col-span-full px-2 pb-1 text-[13px] leading-snug text-warn">
+                      {subjectById.get(item.subjectId)?.name} is only taught in classes {formatGrades(subjectById.get(item.subjectId)?.grades ?? [])}, so it will be left out. Remove it, or change its classes on the Subjects page.
+                    </p>
+                  )}
                 </li>
               )
             })}
@@ -243,6 +259,9 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
         >
           Add Subject
         </Button>
+        {available.length === 0 && (
+          <p className="mt-2 text-[13px] text-ink-3">No subject is set to be taught in class {grade} yet. Choose classes for each subject on the Subjects page.</p>
+        )}
       </div>
 
       <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">

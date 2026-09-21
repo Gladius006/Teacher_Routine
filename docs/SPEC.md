@@ -49,8 +49,11 @@ Teacher
 **R1. School settings.** Working days (1 to 7, default Mon to Sat), periods per day (1 to 12, default 8), a lunch break after period N (default 4, can be switched off), and the junior class cut-off (default: grades 7 and below are junior). Also the limits: maximum periods per day for one subject in one class (default 2) and default maximum teaching periods per day per teacher (default 6).
 - [ ] Changing settings keeps existing teachers and classes. It only invalidates the generated routine.
 
-**R2. Subjects.** A list of subjects, each with a name, a short code (2 to 4 letters) and a color.
+**R2. Subjects.** A list of subjects, each with a name, a short code (2 to 4 letters), a color, and the classes it is taught in (5 to 12, with one-click "Classes 5-10" and "Classes 5-12" options). For example, Art only in classes 5 to 7, Physics only in 9 to 12.
 - [ ] A subject that is still used by a teacher or class cannot be deleted without a warning that lists where it is used.
+- [ ] A class can only add subjects taught in its grade.
+- [ ] If a class already has a subject that isn't taught in its grade (for example after the subject's classes change), the class card and editor say so, and generation leaves those periods out with a warning that says how to fix it.
+- [ ] Backups saved before this option load with every subject taught in all classes.
 
 **R3. Teachers.** Each teacher has a name, a short code, primary subjects (their main field), secondary subjects (extra specialisations), and a maximum number of periods per day and per week.
 - [ ] A teacher must have at least one subject. Primary and secondary cannot overlap.

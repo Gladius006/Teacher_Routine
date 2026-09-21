@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { BookOpenText, Check, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
-import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, cx } from '../../components/ui'
+import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, ToggleChip, cx } from '../../components/ui'
+import { className } from '../../engine/assign'
+import { GRADE_OPTIONS, formatGrades } from '../../engine/grades'
 import type { Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -53,6 +55,9 @@ export function SubjectsPage() {
                         <span translate="no" className="font-mono text-xs text-ink-3">{s.code}</span>
                       </div>
                       <p className="mt-0.5 text-sm text-ink-2">
+                        {s.grades ? (s.grades.length ? `Classes ${formatGrades(s.grades)}` : 'No classes') : 'All classes'}
+                      </p>
+                      <p className="text-[13px] text-ink-3">
                         {u.teachers} {u.teachers === 1 ? 'teacher' : 'teachers'}, {u.classes} {u.classes === 1 ? 'class' : 'classes'}
                       </p>
                     </div>
@@ -101,7 +106,18 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   const [code, setCode] = useState(subject?.code ?? '')
   const [codeTouched, setCodeTouched] = useState(subject !== null)
   const [color, setColor] = useState(subject?.color ?? SUBJECT_COLORS[subjects.length % SUBJECT_COLORS.length])
+  const classes = useStore((s) => s.data.classes)
+  // Offer 5 to 12, plus any other grade the school has classes in.
+  const gradeOptions = [...new Set([...GRADE_OPTIONS, ...classes.map((c) => c.grade)])].sort((a, b) => a - b)
+  const [grades, setGrades] = useState<number[]>(subject?.grades ?? gradeOptions)
   const [tried, setTried] = useState(false)
+
+  const upTo = (max: number) => gradeOptions.filter((g) => g >= 5 && g <= max)
+  const same = (a: number[], b: number[]) => a.length === b.length && a.every((g) => b.includes(g))
+  const toggleGrade = (g: number) => setGrades((xs) => (xs.includes(g) ? xs.filter((x) => x !== g) : [...xs, g].sort((a, b) => a - b)))
+  const gradesError = grades.length === 0 ? 'Choose at least one class.' : undefined
+  // Sections that already have this subject but would no longer be allowed it.
+  const affected = subject ? classes.filter((c) => !grades.includes(c.grade) && c.curriculum.some((i) => i.subjectId === subject.id)) : []
 
   const finalCode = (codeTouched ? code : codeFrom(name)).trim().toUpperCase()
   const nameError = !name.trim() ? 'Enter a subject name.' : subjects.some((s) => s.id !== subject?.id && s.name.toLowerCase() === name.trim().toLowerCase()) ? 'A subject with this name already exists.' : undefined
@@ -110,11 +126,11 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     setTried(true)
-    if (nameError || codeError) {
-      document.getElementById(nameError ? 'subj-name' : 'subj-code')?.focus()
+    if (nameError || codeError || gradesError) {
+      document.getElementById(nameError ? 'subj-name' : codeError ? 'subj-code' : 'subj-grades')?.focus()
       return
     }
-    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color })
+    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades })
     onDone()
   }
 
@@ -136,6 +152,29 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
           onChange={(e) => { setCodeTouched(true); setCode(e.target.value) }}
         />
       </Field>
+      <fieldset>
+        <legend id="subj-grades" tabIndex={-1} className="text-sm font-medium outline-none">Taught in classes</legend>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ToggleChip pressed={same(grades, upTo(10))} onClick={() => setGrades(upTo(10))}>Classes 5-10</ToggleChip>
+          <ToggleChip pressed={same(grades, upTo(12))} onClick={() => setGrades(upTo(12))}>Classes 5-12</ToggleChip>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {gradeOptions.map((g) => (
+            <ToggleChip key={g} pressed={grades.includes(g)} onClick={() => toggleGrade(g)}>
+              <span className="sr-only">Class </span>{g}
+            </ToggleChip>
+          ))}
+        </div>
+        {tried && gradesError ? (
+          <p role="alert" className="mt-2 text-[13px] text-danger">{gradesError}</p>
+        ) : affected.length > 0 ? (
+          <p aria-live="polite" className="mt-2 text-[13px] leading-snug text-warn">
+            {affected.map(className).join(', ')} {affected.length === 1 ? 'has' : 'have'} {name.trim() || 'this subject'}. It will be left out of {affected.length === 1 ? 'that class' : 'those classes'} until you remove it there.
+          </p>
+        ) : (
+          <p className="mt-2 text-[13px] text-ink-3">Only these classes can have this subject.</p>
+        )}
+      </fieldset>
       <fieldset>
         <legend className="text-sm font-medium">Color</legend>
         <div className="mt-3 flex flex-wrap gap-2">
