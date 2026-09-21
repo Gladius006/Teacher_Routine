@@ -233,7 +233,7 @@ function DataCard() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `school-routine-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `school-routine-${new Date().toLocaleDateString('en-CA')}.json`
     a.click()
     URL.revokeObjectURL(url)
     setMessage({ tone: 'ok', text: 'Backup file saved.' })

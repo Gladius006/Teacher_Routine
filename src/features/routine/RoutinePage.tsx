@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowClockwise, CaretLeft, CaretRight, Info, Printer, Sparkle, Table, Warning, WarningCircle } from '@phosphor-icons/react'
+import { ArrowClockwise, CaretLeft, CaretRight, FileXls, Info, Printer, Sparkle, Table, Warning, WarningCircle } from '@phosphor-icons/react'
 import { Badge, Button, EmptyState, IconButton, PageHeader, Segmented, Select, Shell, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { isAdjacent } from '../../engine/blocks'
@@ -10,6 +10,7 @@ import { useStore } from '../../store/store'
 import { RoutineGrid, type GridCell } from './RoutineGrid'
 import { useGenerator } from './useGenerator'
 import { PrintSheet } from './PrintSheet'
+import { exportRoutineToExcel } from './exportExcel'
 
 type View = 'class' | 'teacher' | 'assign'
 
@@ -35,6 +36,21 @@ export function RoutinePage() {
   const routine = useStore((s) => s.routine)
   const { generate, running, progress, error } = useGenerator()
   const [print, setPrint] = useState<'class' | 'teacher' | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const toExcel = async () => {
+    if (!routine) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      await exportRoutineToExcel(data, routine)
+    } catch {
+      setExportError('Could not create the Excel file. Try again, or use Print instead.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     if (!print) return
@@ -56,6 +72,7 @@ export function RoutinePage() {
     <>
       {routine && !running && (
         <>
+          <Button size="md" icon={<FileXls weight="light" />} disabled={exporting} onClick={toExcel}>{exporting ? 'Exporting…' : 'Export to Excel'}</Button>
           <Button size="md" icon={<Printer weight="light" />} onClick={() => setPrint('class')}>Print Classes</Button>
           <Button size="md" icon={<Printer weight="light" />} onClick={() => setPrint('teacher')}>Print Teachers</Button>
         </>
@@ -81,6 +98,9 @@ export function RoutinePage() {
         />
 
         {running && <Progress value={progress} />}
+        {exportError && (
+          <p role="alert" className="mb-6 rounded-core bg-danger-soft px-4 py-3 text-sm text-danger">{exportError}</p>
+        )}
         {error && (
           <p role="alert" className="mb-6 rounded-core bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p>
         )}
