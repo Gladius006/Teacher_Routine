@@ -50,7 +50,7 @@ Teacher
 - [ ] Changing settings keeps existing teachers and classes. It only invalidates the generated routine.
 - [ ] Any working day can be made shorter (for example a 4-period Saturday half day). The routine leaves the rest of that day empty, the week's slot count and rest limits use the shorter day, and the grid, print and Excel show the missing periods as blank. There is no lunch break on a short day that ends before lunch.
 
-**R2. Subjects.** A list of subjects, each with a name, a short code (2 to 4 letters), a color, and the classes it is taught in (5 to 12, with one-click "Classes 5-10" and "Classes 5-12" options). For example, Art only in classes 5 to 7, Physics only in 9 to 12.
+**R2. Subjects.** A list of subjects, each with a name, a short code (2 to 4 letters), a color (24 to choose from; a new subject gets one no other subject uses yet), and the classes it is taught in (5 to 12, with one-click "Classes 5-10" and "Classes 5-12" options). For example, Art only in classes 5 to 7, Physics only in 9 to 12.
 - [ ] A subject that is still used by a teacher or class cannot be deleted without a warning that lists where it is used.
 - [ ] A class can only add subjects taught in its grade.
 - [ ] If a class already has a subject that isn't taught in its grade (for example after the subject's classes change), the class card and editor say so, and generation leaves those periods out with a warning that says how to fix it.
@@ -60,6 +60,7 @@ Teacher
 
 **R3. Teachers.** Each teacher has a name, a short code, primary subjects (their main field), secondary subjects (extra specialisations), and a maximum number of periods per day and per week.
 - [ ] A teacher must have at least one subject. Primary and secondary cannot overlap.
+- [ ] Junior classes: each teacher either takes **any subject** (the default, and the rule for teachers saved before this option) or **only these subjects**: their main and extra subjects plus a chosen list (e.g. a physics teacher may take Mathematics and Science in class 6, but not Bengali or English). Generation, pins and the pin list in the class editor all follow it; a junior subject nobody may take is reported with how to fix it.
 
 **R4. Classes.** A class has a grade (number), a section or stream name (e.g. "A", "Commerce" or "Science B", up to 24 characters, may be empty) and a curriculum: a list of subjects with periods per week. It is shown as "Class 9A" for a one-letter section and "Class 12 Commerce" for a longer one.
 - [ ] A new class starts with the last section of its grade's subjects and periods, or, if it is the grade's first, with every subject taught in that grade. Any can be removed.

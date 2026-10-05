@@ -17,6 +17,16 @@ export function tierOf(t: Teacher, subjectId: Id): SkillTier {
   return 'none'
 }
 
+/** Whether a teacher may take a subject in a junior class: their own subjects, plus their junior list (or anything if they have none). */
+export function canTakeJunior(t: Teacher, subjectId: Id): boolean {
+  return tierOf(t, subjectId) !== 'none' || !t.junior || t.junior.includes(subjectId)
+}
+
+/** Senior classes need the subject as a main or extra skill; junior classes follow canTakeJunior. */
+export function canTake(t: Teacher, subjectId: Id, junior: boolean): boolean {
+  return junior ? canTakeJunior(t, subjectId) : tierOf(t, subjectId) !== 'none'
+}
+
 const TIER_COST: Record<SkillTier, number> = { primary: 0, secondary: 4, none: 10 }
 
 export function weeklyCapacity(t: Teacher, settings: Settings): number {
@@ -52,7 +62,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     const junior = isJunior(cls, settings)
     for (const item of cls.curriculum) {
       if (item.periods <= 0) continue
-      const eligible = junior ? teachers : teachers.filter((t) => tierOf(t, item.subjectId) !== 'none')
+      const eligible = teachers.filter((t) => canTake(t, item.subjectId, junior))
       reqs.push({
         cls,
         subjectId: item.subjectId,
@@ -74,10 +84,12 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     const tier = tierOf(t, r.subjectId)
     const newLoad = load.get(t.id)! + r.periods
     load.set(t.id, newLoad)
-    if (tier === 'none' && !isJunior(r.cls, settings)) {
+    if (!canTake(t, r.subjectId, isJunior(r.cls, settings))) {
       issues.push({
         kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
-        message: `${t.name} is pinned to ${label(r)} but doesn't have that subject as a skill. Add it to their extra subjects, or remove the pin.`,
+        message: isJunior(r.cls, settings)
+          ? `${t.name} is pinned to ${label(r)} but can't take that subject in junior classes. Add it to their junior class subjects, or remove the pin.`
+          : `${t.name} is pinned to ${label(r)} but doesn't have that subject as a skill. Add it to their extra subjects, or remove the pin.`,
       })
     }
     if (newLoad > weeklyCapacity(t, settings)) {
@@ -111,8 +123,11 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     }
 
     if (!best) {
+      const subj = subjectName.get(r.subjectId) ?? 'this subject'
       const why = r.eligible.length === 0
-        ? `no teacher has ${subjectName.get(r.subjectId) ?? 'this subject'} as a skill. Add it to a teacher's main or extra subjects`
+        ? isJunior(r.cls, settings)
+          ? `no teacher can take ${subj} in junior classes. Add it to a teacher's subjects or junior class subjects`
+          : `no teacher has ${subj} as a skill. Add it to a teacher's main or extra subjects`
         : 'every teacher who can take it is at their weekly limit. Raise a limit or add a teacher'
       issues.push({
         kind: 'unassigned', severity: 'error', classId: r.cls.id, subjectId: r.subjectId,

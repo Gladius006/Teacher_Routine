@@ -7,11 +7,28 @@ import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasse
 import type { Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
+/** Subject colors in rainbow order, as shown in the picker. */
+const PALETTE: { hex: string; name: string }[] = [
+  { hex: '#dc2626', name: 'Red' }, { hex: '#e11d48', name: 'Rose' }, { hex: '#9f1239', name: 'Maroon' },
+  { hex: '#be185d', name: 'Pink' }, { hex: '#a21caf', name: 'Magenta' }, { hex: '#9333ea', name: 'Purple' },
+  { hex: '#6d4fd1', name: 'Violet' }, { hex: '#4338ca', name: 'Indigo' }, { hex: '#2a46a6', name: 'Navy' },
+  { hex: '#3b6fd8', name: 'Blue' }, { hex: '#0284c7', name: 'Sky' }, { hex: '#0e7490', name: 'Cyan' },
+  { hex: '#0f8a6a', name: 'Teal' }, { hex: '#10a37f', name: 'Mint' }, { hex: '#047857', name: 'Green' },
+  { hex: '#1f7a3a', name: 'Forest' }, { hex: '#65a30d', name: 'Lime' }, { hex: '#4d7c0f', name: 'Olive' },
+  { hex: '#ca8a04', name: 'Gold' }, { hex: '#b45309', name: 'Amber' }, { hex: '#c2410c', name: 'Orange' },
+  { hex: '#7c2d12', name: 'Brown' }, { hex: '#78716c', name: 'Stone' }, { hex: '#475569', name: 'Slate' },
+]
+
+/** Order new subjects take colors in: far-apart hues first, so neighbours on the timetable look different. */
 export const SUBJECT_COLORS = [
   '#3b6fd8', '#6d4fd1', '#a21caf', '#be185d', '#dc2626', '#c2410c',
   '#b45309', '#4d7c0f', '#0f8a6a', '#047857', '#0e7490', '#475569',
+  '#0284c7', '#9333ea', '#e11d48', '#65a30d', '#ca8a04', '#10a37f',
+  '#4338ca', '#9f1239', '#7c2d12', '#1f7a3a', '#2a46a6', '#78716c',
 ]
-const COLOR_NAMES = ['Blue', 'Violet', 'Magenta', 'Pink', 'Red', 'Orange', 'Amber', 'Olive', 'Teal', 'Green', 'Cyan', 'Slate']
+
+/** The first color no subject uses yet, or the next in turn once all are taken. */
+const nextColor = (used: string[]) => SUBJECT_COLORS.find((c) => !used.includes(c)) ?? SUBJECT_COLORS[used.length % SUBJECT_COLORS.length]
 
 export const codeFrom = (name: string) => name.replace(/[^a-z]/gi, '').slice(0, 4).toUpperCase()
 
@@ -106,7 +123,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   const [name, setName] = useState(subject?.name ?? '')
   const [code, setCode] = useState(subject?.code ?? '')
   const [codeTouched, setCodeTouched] = useState(subject !== null)
-  const [color, setColor] = useState(subject?.color ?? SUBJECT_COLORS[subjects.length % SUBJECT_COLORS.length])
+  const [color, setColor] = useState(subject?.color ?? nextColor(subjects.map((s) => s.color)))
   const classes = useStore((s) => s.data.classes)
   // Offer 5 to 12, plus any other grade the school has classes in.
   const gradeOptions = [...new Set([...GRADE_OPTIONS, ...classes.map((c) => c.grade)])].sort((a, b) => a - b)
@@ -193,25 +210,35 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
         <Stepper id="subj-periods" label="periods per week" value={periods} min={1} max={Math.max(1, slots)} onChange={setPeriods} />
       </Field>
       <fieldset>
-        <legend className="text-sm font-medium">Color</legend>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SUBJECT_COLORS.map((c, ci) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={COLOR_NAMES[ci]}
-              aria-pressed={color === c}
-              onClick={() => setColor(c)}
-              className={cx(
-                'flex size-9 items-center justify-center rounded-full text-white transition-transform duration-300 ease-(--ease-out) hover:scale-110',
-                color === c && 'ring-2 ring-ink ring-offset-2 ring-offset-surface',
-              )}
-              style={{ background: c }}
-            >
-              {color === c && <Check weight="bold" aria-hidden />}
-            </button>
-          ))}
+        <legend className="text-sm font-medium">
+          Color{' '}
+          <span className="font-normal text-ink-3">{PALETTE.find((p) => p.hex === color)?.name ?? ''}</span>
+        </legend>
+        <div className="mt-3 grid grid-cols-8 gap-2 sm:grid-cols-12">
+          {PALETTE.map(({ hex, name: colorName }) => {
+            const users = subjects.filter((s) => s.id !== subject?.id && s.color === hex).map((s) => s.name)
+            return (
+              <button
+                key={hex}
+                type="button"
+                aria-label={users.length ? `${colorName}, used by ${users.join(', ')}` : colorName}
+                title={users.length ? `${colorName}: used by ${users.join(', ')}` : colorName}
+                aria-pressed={color === hex}
+                onClick={() => setColor(hex)}
+                className={cx(
+                  'relative flex aspect-square w-full max-w-9 items-center justify-center rounded-full text-white transition-transform duration-300 ease-(--ease-out) hover:scale-110',
+                  color === hex && 'ring-2 ring-ink ring-offset-2 ring-offset-surface',
+                )}
+                style={{ background: hex }}
+              >
+                {color === hex
+                  ? <Check weight="bold" aria-hidden />
+                  : users.length > 0 && <span aria-hidden className="size-1.5 rounded-full bg-white/80" />}
+              </button>
+            )
+          })}
         </div>
+        <p className="mt-2 text-[13px] text-ink-3">A dot means another subject already has that color.</p>
       </fieldset>
       <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onDone}>Cancel</Button>

@@ -64,6 +64,7 @@ export const useStore = create<State>()(
             subjects: s.data.subjects.filter((x) => x.id !== id),
             teachers: s.data.teachers.map((t) => ({
               ...t, primary: t.primary.filter((x) => x !== id), secondary: t.secondary.filter((x) => x !== id),
+              ...(t.junior ? { junior: t.junior.filter((x) => x !== id) } : {}),
             })),
             classes: s.data.classes.map((c) => ({ ...c, curriculum: c.curriculum.filter((i) => i.subjectId !== id) })),
           },

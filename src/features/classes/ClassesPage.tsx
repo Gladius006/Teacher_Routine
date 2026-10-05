@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { CopySimple, PencilSimple, Plus, Trash, UsersThree, X } from '@phosphor-icons/react'
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Select, Shell, Stepper, cx } from '../../components/ui'
-import { className, isJunior, tierOf } from '../../engine/assign'
+import { canTake, className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
@@ -313,7 +313,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
         ) : (
           <ul className="mt-3 flex flex-col gap-2">
             {items.map((item, idx) => {
-              const eligible = junior ? teachers : teachers.filter((t) => tierOf(t, item.subjectId) !== 'none')
+              const eligible = teachers.filter((t) => canTake(t, item.subjectId, junior))
               const sorted = [...eligible].sort((a, b) => rank(tierOf(a, item.subjectId)) - rank(tierOf(b, item.subjectId)) || a.name.localeCompare(b.name))
               return (
                 <li key={idx} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-core bg-shell/60 p-2 sm:grid-cols-[minmax(0,1.3fr)_auto_minmax(0,1.3fr)_auto]">

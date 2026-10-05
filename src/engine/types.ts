@@ -31,6 +31,11 @@ export interface Teacher {
   code: string
   primary: Id[]
   secondary: Id[]
+  /**
+   * Other subjects they may take in junior classes, on top of main and extra.
+   * Missing = any subject (the rule before this option existed).
+   */
+  junior?: Id[]
   maxPerDay: number
   maxPerWeek: number
 }

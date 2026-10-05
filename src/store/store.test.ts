@@ -75,3 +75,14 @@ describe('store: classes and subjects', () => {
     expect(useStore.getState().routine).toBeNull()
   })
 })
+
+describe('store: junior subjects', () => {
+  it('removing a subject strips it from junior lists', () => {
+    const data = sampleSchool()
+    data.teachers[0] = { ...data.teachers[0], junior: ['s-art', 's-math'] }
+    useStore.getState().replaceData(data)
+    useStore.getState().removeSubject('s-art')
+    expect(useStore.getState().data.teachers[0].junior).toEqual(['s-math'])
+    expect(useStore.getState().data.teachers[1].junior).toBeUndefined()
+  })
+})

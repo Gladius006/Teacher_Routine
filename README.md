@@ -3,7 +3,7 @@
 A web app that builds a school's weekly routine. It matches teachers to subjects by skill, never double-books anyone, and gives teachers a free period after each class wherever the numbers allow.
 
 - Senior classes only get teachers who have the subject as a **main** or **extra** skill.
-- Junior classes (5 to 7 by default, adjustable) can go to any teacher. A teacher with the skill is still preferred.
+- Junior classes (5 to 7 by default, adjustable) can go to any teacher, or only to teachers you allow for that subject (e.g. a physics teacher can take junior Maths but not Bengali). A teacher with the skill is still preferred.
 - The lunch break counts as rest.
 - You can pin a specific teacher to a class and subject; the rest is chosen automatically.
 - Views by class, by teacher, and "who teaches what", plus a workload heatmap, print layouts and **Excel export**.

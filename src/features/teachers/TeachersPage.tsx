@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChalkboardTeacher, MagnifyingGlass, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
-import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, Stepper, Swatch, ToggleChip } from '../../components/ui'
+import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Shell, Stepper, Swatch, ToggleChip } from '../../components/ui'
 import { slotsPerWeek } from '../../engine/blocks'
 import type { Subject, Teacher } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
@@ -58,7 +58,7 @@ export function TeachersPage() {
     <>
       <PageHeader
         title="Teachers"
-        description="Main subjects are preferred. Extra subjects let a teacher cover senior classes too. Classes up to the junior cut-off can go to anyone."
+        description="Main subjects are preferred. Extra subjects let a teacher cover senior classes too. For junior classes, choose what else each teacher can take."
         actions={addButton}
       />
 
@@ -102,6 +102,13 @@ export function TeachersPage() {
                   <div className="col-span-2 flex flex-wrap gap-1.5 lg:col-span-1">
                     <span className="w-12 self-center text-xs text-ink-3 lg:sr-only">Extra</span>
                     {t.secondary.length ? <SubjectList ids={t.secondary} byId={subjectById} /> : <span className="text-sm text-ink-3">None</span>}
+                    <p className="w-full text-xs text-ink-3">
+                      Junior classes: {!t.junior
+                        ? 'any subject'
+                        : t.junior.some((id) => subjectById.has(id))
+                          ? `also ${t.junior.map((id) => subjectById.get(id)?.name).filter(Boolean).join(', ')}`
+                          : 'only these subjects'}
+                    </p>
                   </div>
                   <div className="col-span-2 flex gap-4 text-sm lg:col-span-1 lg:block">
                     <span className="block font-mono tabular-nums text-ink-2">{t.maxPerDay}<span className="font-sans text-ink-3"> /day</span></span>
@@ -177,6 +184,9 @@ function TeacherForm({ teacher, onDone }: { teacher: Teacher | null; onDone: () 
   const [codeTouched, setCodeTouched] = useState(teacher !== null)
   const [primary, setPrimary] = useState<string[]>(teacher?.primary ?? [])
   const [secondary, setSecondary] = useState<string[]>(teacher?.secondary ?? [])
+  // Junior classes: any subject (null), or main + extra + this list.
+  const [junior, setJunior] = useState<string[] | null>(teacher?.junior ?? null)
+  const juniorMax = settings.juniorMaxGrade
   const [maxPerDay, setMaxPerDay] = useState(teacher?.maxPerDay ?? settings.defaultMaxPerDay)
   const [maxPerWeek, setMaxPerWeek] = useState(teacher?.maxPerWeek ?? settings.defaultMaxPerWeek)
   const [tried, setTried] = useState(false)
@@ -196,7 +206,12 @@ function TeacherForm({ teacher, onDone }: { teacher: Teacher | null; onDone: () 
       document.getElementById(first)?.focus()
       return
     }
-    upsertTeacher({ id: teacher?.id ?? uid('t'), name: name.trim(), code: finalCode, primary, secondary: secondary.filter((x) => !primary.includes(x)), maxPerDay, maxPerWeek })
+    const own = [...primary, ...secondary]
+    upsertTeacher({
+      id: teacher?.id ?? uid('t'), name: name.trim(), code: finalCode, primary, secondary: secondary.filter((x) => !primary.includes(x)),
+      ...(junior ? { junior: junior.filter((x) => !own.includes(x)) } : {}),
+      maxPerDay, maxPerWeek,
+    })
     onDone()
   }
 
@@ -235,6 +250,35 @@ function TeacherForm({ teacher, onDone }: { teacher: Teacher | null; onDone: () 
           ))}
         </div>
       </fieldset>
+
+      {juniorMax > 0 && (
+        <fieldset>
+          <legend className="text-sm font-medium">Junior classes (up to class {juniorMax})</legend>
+          <p className="mt-1 text-[13px] text-ink-3">
+            Subjects they can take in junior classes. Their main and extra subjects are always included.
+          </p>
+          <div className="mt-3">
+            <Segmented
+              label="Junior class subjects"
+              value={junior === null ? 'any' : 'chosen'}
+              options={[{ value: 'any', label: 'Any subject' }, { value: 'chosen', label: 'Only these subjects' }]}
+              onChange={(v) => setJunior(v === 'any' ? null : (junior ?? []))}
+            />
+          </div>
+          {junior !== null && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {subjects.map((s) => {
+                const own = primary.includes(s.id) ? 'Main subject' : secondary.includes(s.id) ? 'Extra subject' : undefined
+                return (
+                  <ToggleChip key={s.id} pressed={!!own || junior.includes(s.id)} disabled={!!own} title={own ? `${own}, always included` : undefined} onClick={() => setJunior((j) => (j === null ? j : j.includes(s.id) ? j.filter((x) => x !== s.id) : [...j, s.id]))}>
+                    <Swatch color={s.color} />{s.name}
+                  </ToggleChip>
+                )
+              })}
+            </div>
+          )}
+        </fieldset>
+      )}
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field label="Most periods in a day" htmlFor="t-day">

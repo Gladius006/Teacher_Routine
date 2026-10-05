@@ -34,7 +34,7 @@ export function importSchool(text: string): SchoolData {
     (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods))))
     throw bad('subjects')
   if (!Array.isArray(d.teachers) || !d.teachers.every((x) =>
-    x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))
+    x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && (x.junior === undefined || isStrArr(x.junior)) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))
     throw bad('teachers')
   if (!Array.isArray(d.classes) || !d.classes.every((x) =>
     x && isStr(x.id) && isNum(x.grade) && isStr(x.section) && Array.isArray(x.curriculum) &&
