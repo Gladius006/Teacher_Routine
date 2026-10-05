@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CopySimple, PencilSimple, Plus, Trash, UsersThree, X } from '@phosphor-icons/react'
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Select, Shell, Stepper, cx } from '../../components/ui'
 import { className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
-import { formatGrades, isOffered } from '../../engine/grades'
+import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
+import { cleanSection, nextSection, sameSection } from '../../engine/sections'
 import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -13,6 +14,8 @@ export function ClassesPage() {
   const settings = useStore((s) => s.data.settings)
   const removeClass = useStore((s) => s.removeClass)
   const copyCurriculum = useStore((s) => s.copyCurriculum)
+  const addSection = useStore((s) => s.addSection)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const [editing, setEditing] = useState<ClassSection | 'new' | null>(null)
   const [deleting, setDeleting] = useState<ClassSection | null>(null)
   const [copying, setCopying] = useState<ClassSection | null>(null)
@@ -44,17 +47,20 @@ export function ClassesPage() {
           title="No classes yet"
           action={subjects.length === 0 ? <Button variant="primary" onClick={() => { window.location.hash = 'subjects' }}>Add Subjects First</Button> : addButton}
         >
-          Add a class like 9A, then set how many periods each subject gets per week.
+          Add a class like 9A. It starts with every subject taught in its grade, and you can change the periods or remove any.
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-12">
           {grades.map(([grade, list], gi) => (
             <section key={grade} aria-labelledby={`grade-${grade}`} className="animate-rise" style={{ animationDelay: `${Math.min(gi, 8) * 50}ms` }}>
-              <div className="mb-4 flex items-center gap-3">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
                 <h2 id={`grade-${grade}`} className="text-xl font-semibold tracking-tight">Class {grade}</h2>
                 {isJunior(list[0], settings)
                   ? <Badge tone="accent">Junior: any teacher</Badge>
                   : <Badge>Senior: skilled teachers only</Badge>}
+                <Button size="sm" variant="ghost" className="ml-auto" icon={<Plus weight="bold" />} onClick={() => setRenaming(addSection(grade))}>
+                  Add Section<span className="sr-only"> to class {grade}</span>
+                </Button>
               </div>
               <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {list.map((c) => {
@@ -67,8 +73,10 @@ export function ClassesPage() {
                       <Shell>
                         <div className="p-5">
                           <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h3 className="text-lg font-semibold tracking-tight">{className(c)}</h3>
+                            <div className="min-w-0 flex-1">
+                              {renaming === c.id
+                                ? <SectionNameEditor cls={c} onDone={() => setRenaming(null)} />
+                                : <h3 className="truncate text-lg font-semibold tracking-tight" title={`Class ${className(c)}`}>{className(c)}</h3>}
                               <p className={cx('mt-0.5 font-mono text-sm tabular-nums', over ? 'text-danger' : 'text-ink-2')}>
                                 {used} <span className="font-sans">of</span> {slots} <span className="font-sans">periods</span>
                               </p>
@@ -135,6 +143,54 @@ export function ClassesPage() {
   )
 }
 
+/** "Class 12 Commerce already exists." when another section of the grade has this name. */
+function nameTaken(section: string, grade: number, others: ClassSection[]): string | undefined {
+  const taken = others.find((c) => c.grade === grade && sameSection(c.section, section))
+  return taken ? `Class ${className(taken)} already exists.` : undefined
+}
+
+/** Renames a section in place, right after Add Section creates it. Enter or leaving the field keeps the name. */
+function SectionNameEditor({ cls, onDone }: { cls: ClassSection; onDone: () => void }) {
+  const classes = useStore((s) => s.data.classes)
+  const upsertClass = useStore((s) => s.upsertClass)
+  const [value, setValue] = useState(cls.section)
+  const closed = useRef(false)
+  const error = nameTaken(value, cls.grade, classes.filter((c) => c.id !== cls.id))
+  const commit = () => {
+    if (closed.current) return
+    closed.current = true
+    if (!error) upsertClass({ ...cls, section: cleanSection(value) })
+    onDone()
+  }
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (!error) commit() }} className="-ml-1 -mt-1">
+      <div className="flex items-center gap-2">
+        <label htmlFor={`rename-${cls.id}`} className="pl-1 text-lg font-semibold tracking-tight">
+          <span className="sr-only">Name for class </span>{cls.grade}
+        </label>
+        <Input
+          id={`rename-${cls.id}`}
+          autoFocus
+          spellCheck={false}
+          maxLength={24}
+          autoComplete="off"
+          className="h-9 min-w-0 flex-1 font-semibold"
+          value={value}
+          aria-invalid={!!error}
+          aria-describedby={`rename-${cls.id}-hint`}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); closed.current = true; onDone() } }}
+        />
+      </div>
+      <p id={`rename-${cls.id}-hint`} className={cx('mt-1 pl-1 text-[13px]', error ? 'text-danger' : 'text-ink-3')}>
+        {error ?? 'Type a name, like B or Commerce. Press Enter to keep it.'}
+      </p>
+    </form>
+  )
+}
+
 /** Proportional bar of the week, one segment per subject, in its color. */
 function CompositionBar({ items, slots, byId }: { items: CurriculumItem[]; slots: number; byId: Map<string, Subject> }) {
   const used = items.reduce((n, i) => n + i.periods, 0)
@@ -162,8 +218,16 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const upsertClass = useStore((s) => s.upsertClass)
   const { subjects, teachers, settings, classes } = data
   const [grade, setGrade] = useState(cls?.grade ?? 9)
-  const [section, setSection] = useState(cls?.section ?? 'A')
-  const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? [])
+  const [section, setSection] = useState(cls?.section ?? nextSection(classes.filter((c) => c.grade === 9)))
+  const [sectionTouched, setSectionTouched] = useState(cls !== null)
+  // A new class starts like the grade's last section, or with every subject taught in its grade.
+  const lastOf = (g: number) => [...classes].filter((c) => c.grade === g).sort((a, b) => a.section.localeCompare(b.section)).at(-1)
+  const startFor = (g: number): CurriculumItem[] => {
+    const sib = lastOf(g)
+    return sib ? sib.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods, pinnedTeacherId: null })) : curriculumFor(subjects, g)
+  }
+  const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? startFor(9))
+  const [removedIds, setRemovedIds] = useState<string[]>([])
   const [tried, setTried] = useState(false)
   const slots = slotsPerWeek(settings)
   const subjectById = new Map(subjects.map((s) => [s.id, s]))
@@ -171,11 +235,20 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0)
   const junior = grade <= settings.juniorMaxGrade
 
-  const sectionError = !section.trim()
-    ? 'Enter a section, like A.'
-    : classes.some((c) => c.id !== cls?.id && c.grade === grade && c.section.toLowerCase() === section.trim().toLowerCase())
-      ? `Class ${grade}${section.trim()} already exists.`
-      : undefined
+  const sectionError = nameTaken(section, grade, classes.filter((c) => c.id !== cls?.id))
+  const preview = className({ id: '', grade, section: cleanSection(section), curriculum: [] })
+
+  const changeGrade = (g: number) => {
+    setGrade(g)
+    if (cls) return
+    // For a new class, follow the grade, leaving out any subject removed by hand.
+    setItems(startFor(g).filter((i) => !removedIds.includes(i.subjectId)))
+    if (!sectionTouched) setSection(nextSection(classes.filter((c) => c.grade === g)))
+  }
+  const removeItem = (idx: number) => {
+    setRemovedIds((r) => [...r, items[idx].subjectId])
+    setItems((xs) => xs.filter((_, i) => i !== idx))
+  }
 
   const available = subjects.filter((s) => isOffered(s, grade))
   const unused = available.filter((s) => !items.some((i) => i.subjectId === s.id))
@@ -188,18 +261,33 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
       document.getElementById('class-section')?.focus()
       return
     }
-    upsertClass({ id: cls?.id ?? uid('c'), grade, section: section.trim(), curriculum: items.filter((i) => i.periods > 0) })
+    upsertClass({ id: cls?.id ?? uid('c'), grade, section: cleanSection(section), curriculum: items.filter((i) => i.periods > 0) })
     onDone()
   }
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-7">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[auto_10rem_1fr] sm:items-start">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[auto_minmax(0,15rem)_1fr] sm:items-start">
         <Field label="Class" htmlFor="class-grade">
-          <Stepper id="class-grade" label="class" value={grade} min={1} max={12} onChange={setGrade} />
+          <Stepper id="class-grade" label="class" value={grade} min={1} max={12} onChange={changeGrade} />
         </Field>
-        <Field label="Section" htmlFor="class-section" error={tried ? sectionError : undefined}>
-          <Input id="class-section" name="section" spellCheck={false} maxLength={8} placeholder="A" value={section} aria-invalid={tried && !!sectionError} onChange={(e) => setSection(e.target.value)} />
+        <Field
+          label="Section or stream"
+          htmlFor="class-section"
+          hint={<>Shown as <strong className="font-medium text-ink">Class {preview}</strong></>}
+          error={tried ? sectionError : undefined}
+        >
+          <Input
+            id="class-section"
+            name="section"
+            spellCheck={false}
+            autoComplete="off"
+            maxLength={24}
+            placeholder="A, B, Science, Commerce…"
+            value={section}
+            aria-invalid={tried && !!sectionError}
+            onChange={(e) => { setSectionTouched(true); setSection(e.target.value) }}
+          />
         </Field>
         <div className="sm:pt-8">
           {junior ? <Badge tone="accent">Junior: any teacher can take it</Badge> : <Badge>Senior: only skilled teachers</Badge>}
@@ -215,6 +303,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
           </p>
         </div>
 
+        {!cls && items.length > 0 && (
+          <p className="mt-1 text-[13px] text-ink-3">
+            {lastOf(grade) ? `Copied from ${className(lastOf(grade)!)}.` : 'Filled in from the Subjects page.'} Remove any this class doesn't have.
+          </p>
+        )}
         {items.length === 0 ? (
           <p className="mt-3 rounded-core bg-shell/70 px-4 py-6 text-center text-sm text-ink-2">No subjects yet. Add the first one below.</p>
         ) : (
@@ -237,7 +330,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
                       return <option key={t.id} value={t.id}>{t.name}{tier === 'primary' ? ' (main subject)' : tier === 'secondary' ? ' (extra subject)' : ''}</option>
                     })}
                   </Select>
-                  <IconButton label="Remove subject" className="col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto" onClick={() => setItems((xs) => xs.filter((_, i) => i !== idx))}>
+                  <IconButton label={`Remove ${subjectById.get(item.subjectId)?.name ?? 'subject'}`} className="col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto" onClick={() => removeItem(idx)}>
                     <X weight="light" />
                   </IconButton>
                   {!offered(item.subjectId) && (

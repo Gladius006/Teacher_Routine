@@ -3,6 +3,8 @@ export type Id = string
 export interface Settings {
   dayNames: string[]
   periodsPerDay: number
+  /** Days with fewer periods, e.g. { Sat: 4 } for a Saturday half day. Missing = every day is full. */
+  shortDays?: Record<string, number>
   /** Lunch break falls after this period (1-based). null = no break. */
   lunchAfter: number | null
   /** Classes with grade <= this are junior: any teacher may take them. */
@@ -19,6 +21,8 @@ export interface Subject {
   color: string
   /** Class grades this subject is taught in. Missing = every grade (files saved before this option). */
   grades?: number[]
+  /** Periods a week it gets when it is added to a class automatically. Missing = DEFAULT_SUBJECT_PERIODS. */
+  periods?: number
 }
 
 export interface Teacher {

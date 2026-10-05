@@ -48,17 +48,23 @@ Teacher
 
 **R1. School settings.** Working days (1 to 7, default Mon to Sat), periods per day (1 to 12, default 8), a lunch break after period N (default 4, can be switched off), and the junior class cut-off (default: grades 7 and below are junior). Also the limits: maximum periods per day for one subject in one class (default 2) and default maximum teaching periods per day per teacher (default 6).
 - [ ] Changing settings keeps existing teachers and classes. It only invalidates the generated routine.
+- [ ] Any working day can be made shorter (for example a 4-period Saturday half day). The routine leaves the rest of that day empty, the week's slot count and rest limits use the shorter day, and the grid, print and Excel show the missing periods as blank. There is no lunch break on a short day that ends before lunch.
 
 **R2. Subjects.** A list of subjects, each with a name, a short code (2 to 4 letters), a color, and the classes it is taught in (5 to 12, with one-click "Classes 5-10" and "Classes 5-12" options). For example, Art only in classes 5 to 7, Physics only in 9 to 12.
 - [ ] A subject that is still used by a teacher or class cannot be deleted without a warning that lists where it is used.
 - [ ] A class can only add subjects taught in its grade.
 - [ ] If a class already has a subject that isn't taught in its grade (for example after the subject's classes change), the class card and editor say so, and generation leaves those periods out with a warning that says how to fix it.
 - [ ] Backups saved before this option load with every subject taught in all classes.
+- [ ] Each subject has a default periods per week (default 4). Adding a subject puts it in every existing class of its grades with that many periods. Adding a grade to a subject adds it to that grade's classes; removing a grade removes it from them. The form says which classes will gain or lose it, and warns when a class would go over the week.
+- [ ] Classes whose grade didn't change are left alone, so a subject removed from one class by hand stays removed.
 
 **R3. Teachers.** Each teacher has a name, a short code, primary subjects (their main field), secondary subjects (extra specialisations), and a maximum number of periods per day and per week.
 - [ ] A teacher must have at least one subject. Primary and secondary cannot overlap.
 
-**R4. Classes.** A class has a grade (number), a section (e.g. "A") and a curriculum: a list of subjects with periods per week.
+**R4. Classes.** A class has a grade (number), a section or stream name (e.g. "A", "Commerce" or "Science B", up to 24 characters, may be empty) and a curriculum: a list of subjects with periods per week. It is shown as "Class 9A" for a one-letter section and "Class 12 Commerce" for a longer one.
+- [ ] A new class starts with the last section of its grade's subjects and periods, or, if it is the grade's first, with every subject taught in that grade. Any can be removed.
+- [ ] "Add Section" on a grade creates the next section in one click (B after A, "Commerce B" after "Commerce A", otherwise the first free letter) with the same subjects, and puts its name straight into an editable field.
+- [ ] Two sections of a grade can't share a name (ignoring case and extra spaces).
 - [ ] The editor shows "used X of Y slots" and warns when X exceeds Y (days × periods per day).
 - [ ] Copying a class's curriculum to other sections of the same grade takes one action.
 

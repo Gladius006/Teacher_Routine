@@ -1,4 +1,4 @@
-import { isAdjacent } from './blocks'
+import { isAdjacent, periodsOn, slotsPerWeek } from './blocks'
 import { className } from './assign'
 import type { Grid, Id, Issue, SchoolData } from './types'
 import { W } from './weights'
@@ -48,7 +48,8 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
     const share = Math.ceil(weekly / D) + 1
     for (let d = 0; d < D; d++) {
       let dayLessons = 0
-      for (let p = 0; p < P; p++) {
+      const len = periodsOn(settings, d)
+      for (let p = 0; p < len; p++) {
         const here = week[d * P + p]
         dayLessons += here.length
         if (here.length > 1) {
@@ -59,7 +60,7 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
             message: `${t.name} is in ${here.map((h) => className(classById.get(h.classId)!)).join(' and ')} at the same time (${day(d)}, period ${p + 1}). Generate again, or check the teachers you pinned.`,
           })
         }
-        if (here.length > 0 && isAdjacent(settings, p)) {
+        if (here.length > 0 && isAdjacent(settings, p, d)) {
           if (week[d * P + p + 1].length > 0) {
             restMissed++
             score += W.rest
@@ -87,11 +88,11 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
   for (const cls of classes) {
     const cells = grid[cls.id]
     if (!cells) continue
-    const freeShare = Math.ceil(cells.filter((c) => !c).length / D)
+    const freeShare = Math.ceil(Math.max(0, slotsPerWeek(settings) - cells.filter(Boolean).length) / D)
     for (let d = 0; d < D; d++) {
       const counts = new Map<Id, number>()
       let gaps = 0, seen = false, free = 0
-      for (let p = P - 1; p >= 0; p--) {
+      for (let p = periodsOn(settings, d) - 1; p >= 0; p--) {
         const cell = cells[d * P + p]
         if (!cell) free++
         if (cell) {

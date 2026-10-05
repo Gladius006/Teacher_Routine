@@ -1,4 +1,4 @@
-import { restCapacityPerDay } from './blocks'
+import { periodsOn, restCapacityPerWeek } from './blocks'
 import type { Rng } from './rng'
 import type { Assignment, ClassSection, Id, Issue, SchoolData, Settings, SkillTier, Teacher } from './types'
 
@@ -6,6 +6,7 @@ export function isJunior(c: ClassSection, settings: Settings): boolean {
   return c.grade <= settings.juniorMaxGrade
 }
 
+/** "9A" for a one-letter section, "12 Commerce" for a longer name, "12" when there is none. */
 export function className(c: ClassSection): string {
   return c.section.length > 1 ? `${c.grade} ${c.section}` : `${c.grade}${c.section}`
 }
@@ -19,7 +20,8 @@ export function tierOf(t: Teacher, subjectId: Id): SkillTier {
 const TIER_COST: Record<SkillTier, number> = { primary: 0, secondary: 4, none: 10 }
 
 export function weeklyCapacity(t: Teacher, settings: Settings): number {
-  return Math.min(t.maxPerWeek, t.maxPerDay * settings.dayNames.length)
+  const days = settings.dayNames.reduce((n, _, d) => n + Math.min(t.maxPerDay, periodsOn(settings, d)), 0)
+  return Math.min(t.maxPerWeek, days)
 }
 
 interface Requirement {
@@ -40,7 +42,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
   const { settings, teachers, subjects } = data
   const subjectName = new Map(subjects.map((s) => [s.id, s.name]))
   const teacherById = new Map(teachers.map((t) => [t.id, t]))
-  const restWeek = restCapacityPerDay(settings) * settings.dayNames.length
+  const restWeek = restCapacityPerWeek(settings)
   const load = new Map<Id, number>(teachers.map((t) => [t.id, 0]))
   const issues: Issue[] = []
   const reqs: Requirement[] = []

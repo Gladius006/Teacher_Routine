@@ -26,11 +26,12 @@ export function importSchool(text: string): SchoolData {
   const s = d.settings
   if (
     !s || !isStrArr(s.dayNames) || !isNum(s.periodsPerDay) || !(s.lunchAfter === null || isNum(s.lunchAfter)) ||
+    !(s.shortDays === undefined || (s.shortDays !== null && typeof s.shortDays === 'object' && Object.values(s.shortDays).every(isNum))) ||
     !isNum(s.juniorMaxGrade) || !isNum(s.maxSubjectPerDay) || !isNum(s.defaultMaxPerDay) || !isNum(s.defaultMaxPerWeek)
   ) throw bad('settings')
 
   if (!Array.isArray(d.subjects) || !d.subjects.every((x) => x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStr(x.color) &&
-    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum)))))
+    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods))))
     throw bad('subjects')
   if (!Array.isArray(d.teachers) || !d.teachers.every((x) =>
     x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))

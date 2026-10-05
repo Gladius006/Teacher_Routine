@@ -1,4 +1,5 @@
 import { className } from '../../engine/assign'
+import { periodsOn } from '../../engine/blocks'
 import { teacherSlots } from '../../engine/evaluate'
 import type { Routine, SchoolData } from '../../engine/types'
 
@@ -58,9 +59,10 @@ export function PrintSheet({ data, routine, mode }: { data: SchoolData; routine:
                   <th style={cellStyle}>{day}</th>
                   {Array.from({ length: P }, (_, p) => {
                     const v = page.cell(d * P + p)
+                    const closed = p >= periodsOn(settings, d)
                     return (
-                      <td key={p} style={{ ...cellStyle, height: 44, borderRight: settings.lunchAfter === p + 1 ? '3px double #000' : cellStyle.border }}>
-                        {v ? (<><strong>{v[0]}</strong><br />{v[1]}</>) : <span style={{ color: '#666' }}>Free</span>}
+                      <td key={p} style={{ ...cellStyle, height: 44, background: closed ? '#eee' : undefined, borderRight: settings.lunchAfter === p + 1 ? '3px double #000' : cellStyle.border }}>
+                        {closed ? null : v ? (<><strong>{v[0]}</strong><br />{v[1]}</>) : <span style={{ color: '#666' }}>Free</span>}
                       </td>
                     )
                   })}

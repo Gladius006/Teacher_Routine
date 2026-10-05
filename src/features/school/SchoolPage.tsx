@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { ArrowRight, ArrowUpRight, BookOpenText, ChalkboardTeacher, CheckCircle, Circle, DownloadSimple, Sparkle, Table, Trash, UploadSimple, UsersThree } from '@phosphor-icons/react'
 import { Badge, Button, ConfirmDialog, Field, PageHeader, Select, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
-import { restCapacityPerDay, slotsPerWeek } from '../../engine/blocks'
+import { periodsOn, restCapacityPerDay, slotsPerWeek } from '../../engine/blocks'
 import { emptySchool, sampleSchool } from '../../engine/sample'
 import { hashInputs } from '../../engine/schedule'
 import { exportSchool, importSchool } from '../../store/io'
@@ -94,9 +94,22 @@ function BellSchedule() {
     if (on && settings.dayNames.length === 1) return
     setSettings({ dayNames: ALL_DAYS.filter((x) => (x === d ? !on : settings.dayNames.includes(x))) })
   }
+  const shortDays = settings.shortDays ?? {}
+  // A day is short only while it has fewer periods than a normal day.
+  const shortOnes = settings.dayNames.filter((d, i) => shortDays[d] !== undefined && periodsOn(settings, i) < P)
+  const keepShort = (map: Record<string, number>, max: number) =>
+    Object.fromEntries(Object.entries(map).filter(([, n]) => n < max))
+  const toggleShort = (d: string) => {
+    const next = { ...keepShort(shortDays, P) }
+    if (shortOnes.includes(d)) delete next[d]
+    else next[d] = Math.max(1, Math.ceil(P / 2))
+    setSettings({ shortDays: next })
+  }
+  const setShort = (d: string, n: number) => setSettings({ shortDays: { ...keepShort(shortDays, P), [d]: n } })
   const setPeriods = (n: number) =>
     setSettings({
       periodsPerDay: n,
+      shortDays: keepShort(shortDays, n),
       lunchAfter: settings.lunchAfter !== null && settings.lunchAfter >= n ? null : settings.lunchAfter,
       maxSubjectPerDay: Math.min(settings.maxSubjectPerDay, n),
     })
@@ -114,7 +127,8 @@ function BellSchedule() {
         <h2 className="text-xl font-semibold tracking-tight">Bell schedule</h2>
         <p className="mt-1 text-[15px] text-ink-2">
           {slotsPerWeek(settings)} periods a week per class. A teacher can rest after every class for up to{' '}
-          <strong className="font-semibold text-ink">{rest} periods a day</strong>.
+          <strong className="font-semibold text-ink">{rest} periods a day</strong>
+          {shortOnes.length > 0 && ' (fewer on shorter days)'}.
         </p>
 
         <fieldset className="mt-8">
@@ -124,6 +138,26 @@ function BellSchedule() {
               <ToggleChip key={d} pressed={settings.dayNames.includes(d)} onClick={() => toggleDay(d)}>{d}</ToggleChip>
             ))}
           </div>
+        </fieldset>
+
+        <fieldset className="mt-8">
+          <legend className="text-sm font-medium">Shorter days</legend>
+          <p className="mt-1 text-[13px] text-ink-3">For a half day, like 4 periods on Saturday. The routine leaves the rest of that day empty.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {settings.dayNames.map((d) => (
+              <ToggleChip key={d} pressed={shortOnes.includes(d)} disabled={P < 2} onClick={() => toggleShort(d)}>{d}</ToggleChip>
+            ))}
+          </div>
+          {shortOnes.length > 0 && (
+            <ul className="mt-4 flex flex-col gap-3">
+              {shortOnes.map((d) => (
+                <li key={d} className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <label htmlFor={`short-${d}`} className="w-24 text-sm text-ink-2">Periods on {d}</label>
+                  <Stepper id={`short-${d}`} label={`periods on ${d}`} value={shortDays[d]} min={1} max={P - 1} onChange={(n) => setShort(d, n)} />
+                </li>
+              ))}
+            </ul>
+          )}
         </fieldset>
 
         <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-7 sm:grid-cols-2">

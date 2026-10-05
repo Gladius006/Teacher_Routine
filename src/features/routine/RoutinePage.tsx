@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowClockwise, CaretLeft, CaretRight, FileXls, Info, Printer, Sparkle, Table, Warning, WarningCircle } from '@phosphor-icons/react'
 import { Badge, Button, EmptyState, IconButton, PageHeader, Segmented, Select, Shell, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
-import { isAdjacent } from '../../engine/blocks'
+import { hasShortDays, isAdjacent } from '../../engine/blocks'
 import { teacherSlots } from '../../engine/evaluate'
 import { hashInputs } from '../../engine/schedule'
 import type { Id, Issue, Routine, SchoolData, Severity } from '../../engine/types'
@@ -167,7 +167,7 @@ function useDerived(data: SchoolData, routine: Routine) {
       for (let s = 0; s < S; s++) {
         if (week[s].length > 1) cl.add(s)
         const p = s % P
-        if (week[s].length > 0 && isAdjacent(data.settings, p) && week[s + 1]?.length > 0) {
+        if (week[s].length > 0 && isAdjacent(data.settings, p, Math.floor(s / P)) && week[s + 1]?.length > 0) {
           nr.add(s)
           nr.add(s + 1)
         }
@@ -296,7 +296,7 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
             ) : (
               <>
                 <RoutineGrid settings={data.settings} cells={cells} highlight={highlight} caption={`Weekly routine for ${selectedLabel}`} />
-                <Legend view={view} teacherId={view === 'teacher' ? selectedId : undefined} slots={slots} noRest={noRest} />
+                <Legend view={view} teacherId={view === 'teacher' ? selectedId : undefined} slots={slots} noRest={noRest} shortDays={hasShortDays(data.settings)} />
               </>
             )}
           </div>
@@ -308,7 +308,7 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
   )
 }
 
-function Legend({ view, teacherId, slots, noRest }: { view: View; teacherId?: Id; slots: Map<Id, { classId: Id }[][]>; noRest: Map<Id, Set<number>> }) {
+function Legend({ view, teacherId, slots, noRest, shortDays }: { view: View; teacherId?: Id; shortDays: boolean; slots: Map<Id, { classId: Id }[][]>; noRest: Map<Id, Set<number>> }) {
   const teaching = teacherId ? (slots.get(teacherId) ?? []).reduce((n, s) => n + s.length, 0) : 0
   const pairs = teacherId ? Math.round((noRest.get(teacherId)?.size ?? 0) / 2) : 0
   return (
@@ -324,6 +324,12 @@ function Legend({ view, teacherId, slots, noRest }: { view: View; teacherId?: Id
         <span aria-hidden className="size-3 rounded-[4px] border border-dashed border-line-strong" />
         Free period
       </span>
+      {shortDays && (
+        <span className="inline-flex items-center gap-2">
+          <span aria-hidden className="size-3 rounded-[4px] bg-[repeating-linear-gradient(135deg,var(--line-strong)_0_1px,transparent_1px_4px)] ring-1 ring-line" />
+          School ends early
+        </span>
+      )}
     </div>
   )
 }

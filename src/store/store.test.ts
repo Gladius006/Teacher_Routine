@@ -45,3 +45,33 @@ describe('mismatched routine data', () => {
     expect(() => evaluate(smaller, r.grid)).not.toThrow()
   })
 })
+
+describe('store: classes and subjects', () => {
+  beforeEach(() => useStore.getState().replaceData(sampleSchool()))
+
+  it('adding a subject puts it in every class of its grades', () => {
+    useStore.getState().upsertSubject({ id: 's-music', name: 'Music', code: 'MUS', color: '#888', grades: [5, 6], periods: 1 })
+    const { classes } = useStore.getState().data
+    for (const c of classes) {
+      const item = c.curriculum.find((i) => i.subjectId === 's-music')
+      if (c.grade <= 6) expect(item?.periods).toBe(1)
+      else expect(item).toBeUndefined()
+    }
+  })
+
+  it('adds a section with the next letter and the same subjects', () => {
+    const id = useStore.getState().addSection(9)
+    const { classes } = useStore.getState().data
+    const added = classes.find((c) => c.id === id)!
+    const nineB = classes.find((c) => c.id === 'c-9B')!
+    expect(added.section).toBe('C')
+    expect(added.grade).toBe(9)
+    expect(added.curriculum).toEqual(nineB.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods })))
+  })
+
+  it('drops the routine when a day gets shorter', () => {
+    useStore.getState().setRoutine(generateRoutine(useStore.getState().data, { seed: 1, maxIterations: 5_000 }))
+    useStore.getState().setSettings({ shortDays: { Sat: 4 } })
+    expect(useStore.getState().routine).toBeNull()
+  })
+})

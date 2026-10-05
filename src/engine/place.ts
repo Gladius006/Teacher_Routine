@@ -1,4 +1,4 @@
-import { isAdjacent, slotsPerWeek } from './blocks'
+import { isAdjacent, periodsOn } from './blocks'
 import { className } from './assign'
 import { randInt, type Rng } from './rng'
 import type { Assignment, Grid, Id, Issue, SchoolData } from './types'
@@ -32,7 +32,12 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   const { settings, teachers, classes, subjects } = data
   const D = settings.dayNames.length
   const P = settings.periodsPerDay
-  const S = slotsPerWeek(settings)
+  // Grid index is day * P + period; slots after a shorter day's last period stay empty.
+  const S = D * P
+  const len = Array.from({ length: D }, (_, d) => periodsOn(settings, d))
+  const open: number[] = []
+  for (let d = 0; d < D; d++) for (let p = 0; p < len[d]; p++) open.push(d * P + p)
+  const N = open.length
   const C = classes.length
   const T = teachers.length
   const issues: Issue[] = []
@@ -69,9 +74,9 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   for (let c = 0; c < C; c++) {
     const g = new Int32Array(S).fill(-1)
     const lessons = perClass[c]
-    if (lessons.length > S) {
+    if (lessons.length > N) {
       // Drop what cannot fit, reporting per subject.
-      const dropped = lessons.splice(S)
+      const dropped = lessons.splice(N)
       const bySubject = new Map<Id, number>()
       for (const lid of dropped) bySubject.set(lessonSubjectId[lid], (bySubject.get(lessonSubjectId[lid]) ?? 0) + 1)
       for (const [sid, n] of bySubject) {
@@ -85,7 +90,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
     const fill = new Array<number>(D).fill(0)
     let d = randInt(rng, D)
     for (const lid of lessons) {
-      while (fill[d] >= P) d = (d + 1) % D
+      while (fill[d] >= len[d]) d = (d + 1) % D
       g[d * P + fill[d]] = lid
       fill[d]++
       d = (d + 1) % D
@@ -109,12 +114,12 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   const share = weekly.map((w) => Math.ceil(w / D) + 1)
   const maxSubj = settings.maxSubjectPerDay
   const subjCount = new Int32Array(subjects.length)
-  const freeShare = perClass.map((ls) => Math.ceil(Math.max(0, S - ls.length) / D))
+  const freeShare = perClass.map((ls) => Math.ceil(Math.max(0, N - ls.length) / D))
 
   const teacherDayCost = (t: number, d: number): number => {
     const base = t * S + d * P
     let lessons = 0, clash = 0, rest = 0
-    for (let p = 0; p < P; p++) {
+    for (let p = 0; p < len[d]; p++) {
       const n = occ[base + p]
       lessons += n
       if (n > 1) clash += n - 1
@@ -132,7 +137,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
     const g = grid[c]
     const base = d * P
     let repeat = 0, gaps = 0, seen = false, free = 0
-    for (let p = P - 1; p >= 0; p--) {
+    for (let p = len[d] - 1; p >= 0; p--) {
       const lid = g[base + p]
       if (lid < 0) free++
       if (lid >= 0) {
@@ -142,7 +147,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
         if (subjCount[si] > maxSubj) repeat++
       } else if (seen) gaps++
     }
-    for (let p = 0; p < P; p++) {
+    for (let p = 0; p < len[d]; p++) {
       const lid = g[base + p]
       if (lid >= 0) subjCount[lessonSubject[lid]] = 0
     }
@@ -178,7 +183,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
     g[j] = a
   }
 
-  if (movable.length > 0 && total > 0 && S > 1) {
+  if (movable.length > 0 && total > 0 && N > 1) {
     for (; iter < maxIter; iter++) {
       if ((iter & 4095) === 0) {
         if (total < best) { best = total; bestGrid = grid.map((g) => g.slice()) }
@@ -190,9 +195,10 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
 
       const c = movable[randInt(rng, movable.length)]
       const g = grid[c]
-      const i = randInt(rng, S)
-      let j = randInt(rng, S - 1)
-      if (j >= i) j++
+      const oi = randInt(rng, N)
+      let oj = randInt(rng, N - 1)
+      if (oj >= oi) oj++
+      const i = open[oi], j = open[oj]
       const a = g[i], b = g[j]
       if (a < 0 && b < 0) continue
       if (a >= 0 && b >= 0 && lessonTeacher[a] === lessonTeacher[b] && lessonSubject[a] === lessonSubject[b]) continue

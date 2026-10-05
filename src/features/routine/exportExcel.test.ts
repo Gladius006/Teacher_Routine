@@ -37,4 +37,16 @@ describe('Excel export', () => {
     for (let r = 4; r < 4 + data.teachers.length; r++) total += Number(wl.getCell(r, weekCol).value)
     expect(total).toBe(routine.stats.lessons)
   }, 30_000)
+
+  it('leaves the end of a shorter day blank', async () => {
+    const data = sampleSchool()
+    data.settings.shortDays = { Sat: 4 }
+    const routine = generateRoutine(data, { seed: 1, maxIterations: 20_000 })
+    const wb = await buildRoutineWorkbook(data, routine)
+    const ws = wb.getWorksheet('Class 5A')!
+    const sat = 4 + 5 // header rows, then Mon..Sat
+    expect(ws.getCell(sat, 1).value).toBe('Sat')
+    expect(JSON.stringify(ws.getCell(sat, 2).value)).not.toBe('null') // period 1 is taught or free
+    expect(ws.getCell(sat, 7).value).toBeNull() // period 5 (after the lunch column) does not happen
+  }, 30_000)
 })

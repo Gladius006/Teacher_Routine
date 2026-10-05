@@ -37,7 +37,7 @@ export function WorkloadPage() {
       const days = Array.from({ length: D }, (_, d) => week.slice(d * P, d * P + P).reduce((n, s) => n + s.length, 0))
       let backToBack = 0
       for (let s = 0; s < week.length; s++) {
-        if (week[s].length && isAdjacent(settings, s % P) && week[s + 1]?.length) backToBack++
+        if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length) backToBack++
       }
       return { id: t.id, name: t.name, code: t.code, days, total: days.reduce((a, b) => a + b, 0), maxPerWeek: t.maxPerWeek, backToBack }
     })
@@ -70,7 +70,7 @@ export function WorkloadPage() {
   const teaching = rows.filter((r) => r.total > 0)
   const avg = teaching.length ? teaching.reduce((n, r) => n + r.total, 0) / teaching.length : 0
   const heaviest = [...rows].sort((a, b) => b.total - a.total)[0]
-  const overDays = rows.reduce((n, r) => n + r.days.filter((v) => v > restCap).length, 0)
+  const overDays = rows.reduce((n, r) => n + r.days.filter((v, d) => v > restCapacityPerDay(settings, d)).length, 0)
   const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })
 
   return (
@@ -116,11 +116,12 @@ export function WorkloadPage() {
                     <th scope="row" className="sticky left-0 z-[1] max-w-48 truncate bg-surface pr-3 text-left font-medium">{r.name}</th>
                     {r.days.map((v, d) => {
                       const k = step(v, P)
-                      const over = v > restCap
+                      const cap = restCapacityPerDay(settings, d)
+                      const over = v > cap
                       return (
                         <td key={d} className="p-0">
                           <div
-                            title={`${r.name}, ${settings.dayNames[d]}: ${v} ${v === 1 ? 'period' : 'periods'}${over ? `, more than the ${restCap} that allow full rest` : ''}`}
+                            title={`${r.name}, ${settings.dayNames[d]}: ${v} ${v === 1 ? 'period' : 'periods'}${over ? `, more than the ${cap} that allow full rest` : ''}`}
                             className={cx(
                               'flex h-9 items-center justify-center rounded-lg font-mono text-[13px] tabular-nums',
                               k === 0 && 'border border-dashed border-line-strong text-ink-3',

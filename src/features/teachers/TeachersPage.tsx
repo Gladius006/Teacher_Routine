@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChalkboardTeacher, MagnifyingGlass, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, Stepper, Swatch, ToggleChip } from '../../components/ui'
+import { slotsPerWeek } from '../../engine/blocks'
 import type { Subject, Teacher } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -240,7 +241,7 @@ function TeacherForm({ teacher, onDone }: { teacher: Teacher | null; onDone: () 
           <Stepper id="t-day" label="most periods in a day" value={maxPerDay} min={1} max={settings.periodsPerDay} onChange={setMaxPerDay} />
         </Field>
         <Field label="Most periods in a week" htmlFor="t-week">
-          <Stepper id="t-week" label="most periods in a week" value={maxPerWeek} min={1} max={settings.periodsPerDay * settings.dayNames.length} onChange={setMaxPerWeek} />
+          <Stepper id="t-week" label="most periods in a week" value={maxPerWeek} min={1} max={slotsPerWeek(settings)} onChange={setMaxPerWeek} />
         </Field>
       </div>
 

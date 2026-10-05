@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { CLOUD_ENABLED } from '../cloud/client'
+import { syncSubjectClasses } from '../engine/grades'
 import { emptySchool } from '../engine/sample'
+import { nextSection } from '../engine/sections'
 import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
 
 export type ThemePref = 'system' | 'light' | 'dark'
@@ -19,6 +21,8 @@ interface State {
   removeTeacher: (id: Id) => void
   upsertClass: (c: ClassSection) => void
   removeClass: (id: Id) => void
+  /** Adds one more section to a grade, with a free name and the last section's subjects. Returns its id. */
+  addSection: (grade: number) => Id
   copyCurriculum: (fromId: Id, toIds: Id[]) => void
   replaceData: (data: SchoolData) => void
   setRoutine: (r: Routine | null) => void
@@ -32,7 +36,7 @@ const upsert = <T extends { id: Id }>(list: T[], item: T) =>
 
 export const useStore = create<State>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       data: emptySchool(),
       routine: null,
       theme: 'system',
@@ -42,11 +46,17 @@ export const useStore = create<State>()(
         set((s) => {
           const settings = { ...s.data.settings, ...patch }
           // A routine built for a different grid shape can no longer be shown.
-          const reshaped = settings.periodsPerDay !== s.data.settings.periodsPerDay || settings.dayNames.length !== s.data.settings.dayNames.length
+          const reshaped = settings.periodsPerDay !== s.data.settings.periodsPerDay || settings.dayNames.length !== s.data.settings.dayNames.length ||
+            JSON.stringify(settings.shortDays ?? {}) !== JSON.stringify(s.data.settings.shortDays ?? {})
           return { data: { ...s.data, settings }, routine: reshaped ? null : s.routine }
         }),
 
-      upsertSubject: (subject) => set((s) => ({ data: { ...s.data, subjects: upsert(s.data.subjects, subject) } })),
+      upsertSubject: (subject) =>
+        set((s) => {
+          // Classes in the subject's grades get it straight away; it can still be removed from any one class.
+          const before = s.data.subjects.find((x) => x.id === subject.id)
+          return { data: { ...s.data, subjects: upsert(s.data.subjects, subject), classes: syncSubjectClasses(s.data.classes, before, subject) } }
+        }),
       removeSubject: (id) =>
         set((s) => ({
           data: {
@@ -74,6 +84,15 @@ export const useStore = create<State>()(
 
       upsertClass: (cls) => set((s) => ({ data: { ...s.data, classes: upsert(s.data.classes, cls) } })),
       removeClass: (id) => set((s) => ({ data: { ...s.data, classes: s.data.classes.filter((x) => x.id !== id) } })),
+      addSection: (grade) => {
+        const siblings = get().data.classes.filter((c) => c.grade === grade)
+        const from = [...siblings].sort((a, b) => a.section.localeCompare(b.section)).at(-1)
+        const id = uid('c')
+        // Pins are per section, so they are not copied.
+        const curriculum = from ? from.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods })) : []
+        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum }] } }))
+        return id
+      },
       copyCurriculum: (fromId, toIds) =>
         set((s) => {
           const from = s.data.classes.find((c) => c.id === fromId)

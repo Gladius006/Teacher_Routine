@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { BookOpenText, Check, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
-import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, ToggleChip, cx } from '../../components/ui'
+import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
-import { GRADE_OPTIONS, formatGrades } from '../../engine/grades'
+import { slotsPerWeek } from '../../engine/blocks'
+import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
 import type { Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -110,14 +111,22 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   // Offer 5 to 12, plus any other grade the school has classes in.
   const gradeOptions = [...new Set([...GRADE_OPTIONS, ...classes.map((c) => c.grade)])].sort((a, b) => a - b)
   const [grades, setGrades] = useState<number[]>(subject?.grades ?? gradeOptions)
+  const [periods, setPeriods] = useState(subject?.periods ?? DEFAULT_SUBJECT_PERIODS)
   const [tried, setTried] = useState(false)
+  const slots = useStore((s) => slotsPerWeek(s.data.settings))
 
   const upTo = (max: number) => gradeOptions.filter((g) => g >= 5 && g <= max)
   const same = (a: number[], b: number[]) => a.length === b.length && a.every((g) => b.includes(g))
   const toggleGrade = (g: number) => setGrades((xs) => (xs.includes(g) ? xs.filter((x) => x !== g) : [...xs, g].sort((a, b) => a - b)))
   const gradesError = grades.length === 0 ? 'Choose at least one class.' : undefined
-  // Sections that already have this subject but would no longer be allowed it.
-  const affected = subject ? classes.filter((c) => !grades.includes(c.grade) && c.curriculum.some((i) => i.subjectId === subject.id)) : []
+  // What saving will do to the classes: new grades get the subject, dropped grades lose it.
+  const id = subject?.id ?? 'new-subject'
+  const synced = syncSubjectClasses(classes, subject ?? undefined, { id, name, code, color, grades, periods })
+  const has = (c: { curriculum: { subjectId: string }[] }) => c.curriculum.some((i) => i.subjectId === id)
+  const added = classes.filter((c, i) => !has(c) && has(synced[i]))
+  const removed = classes.filter((c, i) => has(c) && !has(synced[i]))
+  const overfull = added.filter((c) => c.curriculum.reduce((n, i) => n + i.periods, 0) + periods > slots)
+  const list = (cs: typeof classes) => (cs.length <= 6 ? cs.map(className).join(', ') : `${cs.slice(0, 5).map(className).join(', ')} and ${cs.length - 5} more`)
 
   const finalCode = (codeTouched ? code : codeFrom(name)).trim().toUpperCase()
   const nameError = !name.trim() ? 'Enter a subject name.' : subjects.some((s) => s.id !== subject?.id && s.name.toLowerCase() === name.trim().toLowerCase()) ? 'A subject with this name already exists.' : undefined
@@ -130,7 +139,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       document.getElementById(nameError ? 'subj-name' : codeError ? 'subj-code' : 'subj-grades')?.focus()
       return
     }
-    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades })
+    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods })
     onDone()
   }
 
@@ -167,14 +176,22 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
         </div>
         {tried && gradesError ? (
           <p role="alert" className="mt-2 text-[13px] text-danger">{gradesError}</p>
-        ) : affected.length > 0 ? (
-          <p aria-live="polite" className="mt-2 text-[13px] leading-snug text-warn">
-            {affected.map(className).join(', ')} {affected.length === 1 ? 'has' : 'have'} {name.trim() || 'this subject'}. It will be left out of {affected.length === 1 ? 'that class' : 'those classes'} until you remove it there.
-          </p>
         ) : (
-          <p className="mt-2 text-[13px] text-ink-3">Only these classes can have this subject.</p>
+          <div aria-live="polite" className="mt-2 flex flex-col gap-1 text-[13px] leading-snug">
+            {added.length > 0 && <p className="text-ink-2">Will be added to {list(added)}.</p>}
+            {overfull.length > 0 && (
+              <p className="text-warn">
+                {list(overfull)} will then need more than the {slots} periods a week has. Lower the periods below, or remove a subject from {overfull.length === 1 ? 'that class' : 'those classes'}.
+              </p>
+            )}
+            {removed.length > 0 && <p className="text-warn">Will be removed from {list(removed)}.</p>}
+            {added.length + removed.length === 0 && <p className="text-ink-3">Only these classes can have this subject.</p>}
+          </div>
         )}
       </fieldset>
+      <Field label="Periods per week" htmlFor="subj-periods" hint="What each class gets when this subject is added to it. You can change it for any class.">
+        <Stepper id="subj-periods" label="periods per week" value={periods} min={1} max={Math.max(1, slots)} onChange={setPeriods} />
+      </Field>
       <fieldset>
         <legend className="text-sm font-medium">Color</legend>
         <div className="mt-3 flex flex-wrap gap-2">

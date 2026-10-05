@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Coffee } from '@phosphor-icons/react'
 import { cx } from '../../components/ui'
+import { periodsOn } from '../../engine/blocks'
 import type { Settings } from '../../engine/types'
 
 export interface GridCell {
@@ -48,11 +49,16 @@ export function RoutineGrid({ settings, cells, highlight, caption }: {
               <th scope="row" className="sticky left-0 z-[1] bg-surface pr-1 text-sm font-medium text-ink-2">{day}</th>
               {cols.map((p) => {
                 const cell = cells[d * P + p]
+                const closed = p >= periodsOn(settings, d)
                 const hl = highlight?.day === d && highlight?.period === p
                 return (
                   <FragmentWithLunch key={p} lunchAfter={lunch === p + 1} lunchRow={d === 0} rows={settings.dayNames.length}>
                     <td className="p-0 align-top">
-                      {cell ? (
+                      {closed ? (
+                        <div className="flex h-[4.25rem] items-center justify-center rounded-[10px] bg-[repeating-linear-gradient(135deg,var(--line-strong)_0_1px,transparent_1px_9px)] text-xs text-ink-3">
+                          <span className="sr-only">No period, school ends early</span>
+                        </div>
+                      ) : cell ? (
                         <div
                           title={cell.label}
                           className={cx(

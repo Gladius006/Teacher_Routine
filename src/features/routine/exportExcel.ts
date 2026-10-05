@@ -1,6 +1,6 @@
 import type { Workbook, Worksheet } from 'exceljs'
 import { className } from '../../engine/assign'
-import { isAdjacent } from '../../engine/blocks'
+import { isAdjacent, periodsOn } from '../../engine/blocks'
 import { teacherSlots } from '../../engine/evaluate'
 import type { Routine, SchoolData } from '../../engine/types'
 
@@ -10,6 +10,7 @@ const LINE = 'FFC9CFCB'
 const HEADER_FILL = 'FFE8EBE6'
 const LUNCH_FILL = 'FFDDE9E2'
 const WARN_FILL = 'FFF8EAD4'
+const CLOSED_FILL = 'FFF1F2F0'
 
 /** Subject color mixed with white, so text on it stays readable when printed. */
 function tint(hex: string, amount = 0.8): string {
@@ -101,6 +102,10 @@ function weekSheet(
       const v = cell(d * P + p)
       c.border = BORDER
       c.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' }
+      if (p >= periodsOn(settings, d)) {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CLOSED_FILL } }
+        continue
+      }
       if (!v) {
         c.value = 'Free'
         c.font = { italic: true, color: { argb: MUTED } }
@@ -190,7 +195,7 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
       c.border = BORDER
       if (n > t.maxPerDay) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: WARN_FILL } }
     })
-    for (let s = 0; s < week.length; s++) if (week[s].length && isAdjacent(settings, s % P) && week[s + 1]?.length) noRest++
+    for (let s = 0; s < week.length; s++) if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length) noRest++
     ;[[cTotal, total], [cLimit, t.maxPerWeek], [cNoRest, noRest]].forEach(([c, v]) => {
       const cell = wl.getCell(r, c)
       cell.value = v
@@ -218,8 +223,8 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
       const here = week[s]
       if (!here?.length) return null
       const p = s % P
-      const prevBusy = p > 0 && isAdjacent(settings, p - 1) && (week[s - 1]?.length ?? 0) > 0
-      const nextBusy = isAdjacent(settings, p) && (week[s + 1]?.length ?? 0) > 0
+      const prevBusy = p > 0 && isAdjacent(settings, p - 1, Math.floor(s / P)) && (week[s - 1]?.length ?? 0) > 0
+      const nextBusy = isAdjacent(settings, p, Math.floor(s / P)) && (week[s + 1]?.length ?? 0) > 0
       const subj = subject.get(here[0].subjectId)
       return {
         top: `Class ${here.map((h) => className(cls.get(h.classId)!)).join(' + ')}`,
