@@ -38,6 +38,7 @@ function describe(e: ActivityEntry, userName: (id: string) => string): string {
     }
     case 'generate': return `Generated a routine (${d.lessons ?? '?'} periods, ${d.problems ?? 0} problems)`
     case 'export_excel': return 'Exported the routine to Excel'
+    case 'clear_routine': return 'Cleared the routine'
     case 'print': return 'Printed the routine'
     case 'import_backup': return 'Opened a backup file'
     case 'download_backup': return 'Downloaded a backup file'
@@ -65,6 +66,7 @@ const ACTION_FILTERS = [
   { value: 'login', label: 'Sign-ins' },
   { value: 'edit', label: 'Edits' },
   { value: 'generate', label: 'Routines generated' },
+  { value: 'clear_routine', label: 'Routines cleared' },
   { value: 'export_excel', label: 'Excel exports' },
   { value: 'user_create', label: 'Users created' },
   { value: 'signup_request', label: 'Account requests' },

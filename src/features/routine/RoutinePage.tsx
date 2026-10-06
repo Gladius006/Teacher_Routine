@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowClockwise, CaretLeft, CaretRight, FileXls, Info, Printer, Sparkle, Table, Warning, WarningCircle } from '@phosphor-icons/react'
-import { Badge, Button, EmptyState, IconButton, PageHeader, Segmented, Select, Shell, cx } from '../../components/ui'
+import { ArrowClockwise, CaretLeft, CaretRight, FileXls, Info, Printer, Sparkle, Table, Trash, Warning, WarningCircle } from '@phosphor-icons/react'
+import { Badge, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Segmented, Select, Shell, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { hasShortDays, isAdjacent } from '../../engine/blocks'
 import { teacherSlots } from '../../engine/evaluate'
@@ -35,6 +35,8 @@ function useRoutineParams() {
 export function RoutinePage() {
   const data = useStore((s) => s.data)
   const routine = useStore((s) => s.routine)
+  const setRoutine = useStore((s) => s.setRoutine)
+  const [clearing, setClearing] = useState(false)
   const { generate, running, progress, error } = useGenerator()
   const [print, setPrint] = useState<'class' | 'teacher' | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -78,6 +80,7 @@ export function RoutinePage() {
           <Button size="md" icon={<FileXls weight="light" />} disabled={exporting} onClick={toExcel}>{exporting ? 'Exporting…' : 'Export to Excel'}</Button>
           <Button size="md" icon={<Printer weight="light" />} onClick={() => setPrint('class')}>Print Classes</Button>
           <Button size="md" icon={<Printer weight="light" />} onClick={() => setPrint('teacher')}>Print Teachers</Button>
+          <Button size="md" variant="ghost" icon={<Trash weight="light" />} className="hover:text-danger" onClick={() => setClearing(true)}>Clear Routine</Button>
         </>
       )}
       <Button
@@ -131,6 +134,18 @@ export function RoutinePage() {
         )}
       </div>
       {routine && print && <PrintSheet data={data} routine={routine} mode={print} />}
+      <ConfirmDialog
+        open={clearing}
+        onClose={() => setClearing(false)}
+        onConfirm={() => {
+          setRoutine(null)
+          void logActivity('clear_routine', {})
+        }}
+        title="Clear the routine?"
+        confirmLabel="Clear Routine"
+      >
+        The generated routine is deleted{routine ? `, with its ${routine.stats.lessons} periods` : ''}. Subjects, teachers and classes stay as they are, and you can generate a new routine any time. Download it with Export to Excel first if you want to keep a copy.
+      </ConfirmDialog>
     </>
   )
 }
