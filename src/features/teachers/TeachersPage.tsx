@@ -80,8 +80,8 @@ export function TeachersPage() {
       </div>
 
       <Shell className="animate-rise [animation-delay:60ms]">
-        <div className="hidden grid-cols-[minmax(12rem,1.3fr)_2fr_2fr_7rem_6rem_5.5rem] gap-4 border-b border-line px-5 py-3 text-xs font-medium uppercase tracking-[0.08em] text-ink-3 lg:grid">
-          <span>Teacher</span><span>Main subjects</span><span>Extra subjects</span><span>Limits</span><span>This week</span><span className="sr-only">Actions</span>
+        <div className="hidden grid-cols-[minmax(11rem,1.2fr)_1.6fr_1.6fr_1.8fr_6rem_6rem_5.5rem] gap-4 border-b border-line px-5 py-3 text-xs font-medium uppercase tracking-[0.08em] text-ink-3 lg:grid">
+          <span>Teacher</span><span>Main subjects</span><span>Extra subjects</span><span>Junior classes</span><span>Limits</span><span>This week</span><span className="sr-only">Actions</span>
         </div>
         {shown.length === 0 ? (
           <p className="px-5 py-10 text-center text-ink-2">No teachers match “{query}”.</p>
@@ -90,7 +90,7 @@ export function TeachersPage() {
             {shown.map((t) => {
               const load = weekly.get(t.id)
               return (
-                <li key={t.id} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3 px-5 py-4 lg:grid-cols-[minmax(12rem,1.3fr)_2fr_2fr_7rem_6rem_5.5rem]">
+                <li key={t.id} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3 px-5 py-4 lg:grid-cols-[minmax(11rem,1.2fr)_1.6fr_1.6fr_1.8fr_6rem_6rem_5.5rem]">
                   <div className="flex min-w-0 items-center gap-3">
                     <span translate="no" aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-shell font-mono text-xs font-medium text-ink-2">{t.code}</span>
                     <span className="truncate font-medium">{t.name}</span>
@@ -102,13 +102,14 @@ export function TeachersPage() {
                   <div className="col-span-2 flex flex-wrap gap-1.5 lg:col-span-1">
                     <span className="w-12 self-center text-xs text-ink-3 lg:sr-only">Extra</span>
                     {t.secondary.length ? <SubjectList ids={t.secondary} byId={subjectById} /> : <span className="text-sm text-ink-3">None</span>}
-                    <p className="w-full text-xs text-ink-3">
-                      Junior classes: {!t.junior
-                        ? 'any subject'
-                        : t.junior.some((id) => subjectById.has(id))
-                          ? `also ${t.junior.map((id) => subjectById.get(id)?.name).filter(Boolean).join(', ')}`
-                          : 'only these subjects'}
-                    </p>
+                  </div>
+                  <div className="col-span-2 flex flex-wrap gap-1.5 lg:col-span-1">
+                    <span className="w-12 self-center text-xs text-ink-3 lg:sr-only">Junior</span>
+                    {!t.junior
+                      ? <span className="self-center text-sm text-ink-2">Any subject</span>
+                      : t.junior.some((id) => subjectById.has(id))
+                        ? <ShortSubjectList ids={t.junior.filter((id) => subjectById.has(id))} byId={subjectById} />
+                        : <span className="self-center text-sm text-ink-3">Main and extra only</span>}
                   </div>
                   <div className="col-span-2 flex gap-4 text-sm lg:col-span-1 lg:block">
                     <span className="block font-mono tabular-nums text-ink-2">{t.maxPerDay}<span className="font-sans text-ink-3"> /day</span></span>
@@ -162,6 +163,21 @@ function SubjectList({ ids, byId, strong }: { ids: string[]; byId: Map<string, S
           </span>
         )
       })}
+    </>
+  )
+}
+
+/** Up to three subject chips, then "+N more" with every name in its tooltip. */
+function ShortSubjectList({ ids, byId }: { ids: string[]; byId: Map<string, Subject> }) {
+  const extra = ids.slice(3)
+  return (
+    <>
+      <SubjectList ids={ids.slice(0, 3)} byId={byId} />
+      {extra.length > 0 && (
+        <span className="self-center text-[13px] text-ink-3" title={extra.map((id) => byId.get(id)?.name).join(', ')}>
+          +{extra.length} more<span className="sr-only">: {extra.map((id) => byId.get(id)?.name).join(', ')}</span>
+        </span>
+      )}
     </>
   )
 }
