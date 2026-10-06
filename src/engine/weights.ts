@@ -4,6 +4,8 @@ export const W = {
   overDay: 400,
   rest: 12,
   subjectRepeat: 40,
+  /** An end-of-day subject (e.g. Physical Ed.) placed before the last periods of the day. */
+  endOfDay: 150,
   gap: 25,
   imbalance: 6,
   /** A class day with more free periods than its even share (so no class goes home at lunch). */

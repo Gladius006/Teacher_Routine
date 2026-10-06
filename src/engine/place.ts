@@ -54,6 +54,8 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   const lessonTeacher: number[] = []
   const lessonSubject: number[] = []
   const lessonSubjectId: Id[] = []
+  /** How many last periods of the day this lesson may go in; 0 = any period. */
+  const lessonEnd: number[] = []
   const perClass: number[][] = classes.map(() => [])
   for (const a of assignments) {
     if (a.teacherId === null) continue
@@ -66,6 +68,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       lessonTeacher.push(ti)
       lessonSubject.push(si)
       lessonSubjectId.push(a.subjectId)
+      lessonEnd.push(Math.max(0, Math.round(subjects[si].endOfDay ?? 0)))
       perClass[ci].push(lid)
     }
   }
@@ -86,6 +89,8 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
         })
       }
     }
+    // End-of-day lessons go last, so the first deal already puts most of them late in the day.
+    lessons.sort((x, y) => (lessonEnd[x] > 0 ? 1 : 0) - (lessonEnd[y] > 0 ? 1 : 0))
     // Start: deal lessons round-robin across days (spreads subjects), filling each day from period 1.
     const fill = new Array<number>(D).fill(0)
     let d = randInt(rng, D)
@@ -136,12 +141,13 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   const classDayCost = (c: number, d: number): number => {
     const g = grid[c]
     const base = d * P
-    let repeat = 0, gaps = 0, seen = false, free = 0
+    let repeat = 0, gaps = 0, seen = false, free = 0, early = 0
     for (let p = len[d] - 1; p >= 0; p--) {
       const lid = g[base + p]
       if (lid < 0) free++
       if (lid >= 0) {
         seen = true
+        if (lessonEnd[lid] > 0 && p < len[d] - lessonEnd[lid]) early++
         const si = lessonSubject[lid]
         subjCount[si]++
         if (subjCount[si] > maxSubj) repeat++
@@ -151,7 +157,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       const lid = g[base + p]
       if (lid >= 0) subjCount[lessonSubject[lid]] = 0
     }
-    return W.subjectRepeat * repeat + W.gap * gaps + W.freeSpread * Math.max(0, free - freeShare[c])
+    return W.subjectRepeat * repeat + W.gap * gaps + W.freeSpread * Math.max(0, free - freeShare[c]) + W.endOfDay * early
   }
 
   const tdCost = new Float64Array(T * D)

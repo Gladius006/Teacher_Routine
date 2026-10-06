@@ -37,6 +37,7 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
   const P = settings.periodsPerDay
   const issues: Issue[] = []
   const subjectName = new Map(subjects.map((s) => [s.id, s.name]))
+  const endOf = new Map(subjects.map((s) => [s.id, Math.max(0, Math.round(s.endOfDay ?? 0))]))
   const classById = new Map(classes.map((c) => [c.id, c]))
   const day = (d: number) => settings.dayNames[d] ?? `Day ${d + 1}`
   let score = 0, lessons = 0, restGiven = 0, restMissed = 0, clashes = 0
@@ -92,11 +93,20 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
     for (let d = 0; d < D; d++) {
       const counts = new Map<Id, number>()
       let gaps = 0, seen = false, free = 0
-      for (let p = periodsOn(settings, d) - 1; p >= 0; p--) {
+      const len = periodsOn(settings, d)
+      for (let p = len - 1; p >= 0; p--) {
         const cell = cells[d * P + p]
         if (!cell) free++
         if (cell) {
           seen = true
+          const end = endOf.get(cell.subjectId) ?? 0
+          if (end > 0 && p < len - end) {
+            score += W.endOfDay
+            issues.push({
+              kind: 'notAtEnd', severity: 'warning', classId: cls.id, subjectId: cell.subjectId, teacherId: cell.teacherId, day: d, period: p,
+              message: `Class ${className(cls)} has ${subjectName.get(cell.subjectId)} in period ${p + 1} on ${day(d)}, not in the last ${end === 1 ? 'period' : `${end} periods`}. Its teachers can't fit every class at the end of the day: allow more last periods for it, or add a teacher.`,
+            })
+          }
           counts.set(cell.subjectId, (counts.get(cell.subjectId) ?? 0) + 1)
         } else if (seen) gaps++
       }

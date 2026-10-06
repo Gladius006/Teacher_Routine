@@ -23,6 +23,8 @@ export interface Subject {
   grades?: number[]
   /** Periods a week it gets when it is added to a class automatically. Missing = DEFAULT_SUBJECT_PERIODS. */
   periods?: number
+  /** Only in the last N periods of each day, e.g. 2 for Physical Ed. Missing or 0 = any time. */
+  endOfDay?: number
 }
 
 export interface Teacher {
@@ -91,6 +93,7 @@ export type IssueKind =
   | 'overCapacity'
   | 'pinInvalid'
   | 'notOffered'
+  | 'notAtEnd'
 
 export type Severity = 'error' | 'warning' | 'info'
 

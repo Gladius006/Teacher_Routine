@@ -57,6 +57,7 @@ Teacher
 - [ ] Backups saved before this option load with every subject taught in all classes.
 - [ ] Each subject has a default periods per week (default 4). Adding a subject puts it in every existing class of its grades with that many periods. Adding a grade to a subject adds it to that grade's classes; removing a grade removes it from them. The form says which classes will gain or lose it, and warns when a class would go over the week.
 - [ ] Classes whose grade didn't change are left alone, so a subject removed from one class by hand stays removed.
+- [ ] Time of day: a subject can be "End of day", only in the last N periods of each day (default 2; counted from where a shorter day ends), e.g. Physical Ed. or Work Education. Teacher choice spreads these classes so no teacher has more of them than their last periods can hold. Any that still can't fit are reported by class, day and period, with how to fix it.
 
 **R3. Teachers.** Each teacher has a name, a short code, primary subjects (their main field), secondary subjects (extra specialisations), and a maximum number of periods per day and per week.
 - [ ] A teacher must have at least one subject. Primary and secondary cannot overlap.

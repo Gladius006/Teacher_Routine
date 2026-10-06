@@ -31,7 +31,7 @@ export function importSchool(text: string): SchoolData {
   ) throw bad('settings')
 
   if (!Array.isArray(d.subjects) || !d.subjects.every((x) => x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStr(x.color) &&
-    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods))))
+    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods)) && (x.endOfDay === undefined || isNum(x.endOfDay))))
     throw bad('subjects')
   if (!Array.isArray(d.teachers) || !d.teachers.every((x) =>
     x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && (x.junior === undefined || isStrArr(x.junior)) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))

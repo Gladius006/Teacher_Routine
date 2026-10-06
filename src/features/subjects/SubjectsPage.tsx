@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BookOpenText, Check, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
-import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
+import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
@@ -74,6 +74,7 @@ export function SubjectsPage() {
                       </div>
                       <p className="mt-0.5 text-sm text-ink-2">
                         {s.grades ? (s.grades.length ? `Classes ${formatGrades(s.grades)}` : 'No classes') : 'All classes'}
+                        {s.endOfDay ? <span className="text-ink-3">, end of day</span> : null}
                       </p>
                       <p className="text-[13px] text-ink-3">
                         {u.teachers} {u.teachers === 1 ? 'teacher' : 'teachers'}, {u.classes} {u.classes === 1 ? 'class' : 'classes'}
@@ -129,6 +130,9 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   const gradeOptions = [...new Set([...GRADE_OPTIONS, ...classes.map((c) => c.grade)])].sort((a, b) => a - b)
   const [grades, setGrades] = useState<number[]>(subject?.grades ?? gradeOptions)
   const [periods, setPeriods] = useState(subject?.periods ?? DEFAULT_SUBJECT_PERIODS)
+  const periodsPerDay = useStore((s) => s.data.settings.periodsPerDay)
+  // 0 = any time; otherwise only in the last N periods of each day.
+  const [endOfDay, setEndOfDay] = useState(subject?.endOfDay ?? 0)
   const [tried, setTried] = useState(false)
   const slots = useStore((s) => slotsPerWeek(s.data.settings))
 
@@ -156,7 +160,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       document.getElementById(nameError ? 'subj-name' : codeError ? 'subj-code' : 'subj-grades')?.focus()
       return
     }
-    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods })
+    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods, ...(endOfDay > 0 ? { endOfDay } : {}) })
     onDone()
   }
 
@@ -209,6 +213,25 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       <Field label="Periods per week" htmlFor="subj-periods" hint="What each class gets when this subject is added to it. You can change it for any class.">
         <Stepper id="subj-periods" label="periods per week" value={periods} min={1} max={Math.max(1, slots)} onChange={setPeriods} />
       </Field>
+      <fieldset>
+        <legend className="text-sm font-medium">Time of day</legend>
+        <p className="mt-1 text-[13px] text-ink-3">For subjects like Physical Ed. or Work Education that are taken at the end of the day.</p>
+        <div className="mt-3">
+          <Segmented
+            label="Time of day"
+            value={endOfDay > 0 ? 'end' : 'any'}
+            options={[{ value: 'any', label: 'Any time' }, { value: 'end', label: 'End of day' }]}
+            onChange={(v) => setEndOfDay(v === 'end' ? Math.min(2, Math.max(1, periodsPerDay - 1)) : 0)}
+          />
+        </div>
+        {endOfDay > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-ink-2">
+            <label htmlFor="subj-end">Only in the last</label>
+            <Stepper id="subj-end" label="last periods of the day" value={endOfDay} min={1} max={Math.max(1, periodsPerDay - 1)} onChange={setEndOfDay} />
+            <span>{endOfDay === 1 ? 'period' : 'periods'} of the day</span>
+          </div>
+        )}
+      </fieldset>
       <fieldset>
         <legend className="text-sm font-medium">
           Color{' '}

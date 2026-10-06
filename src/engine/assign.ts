@@ -54,6 +54,12 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
   const teacherById = new Map(teachers.map((t) => [t.id, t]))
   const restWeek = restCapacityPerWeek(settings)
   const load = new Map<Id, number>(teachers.map((t) => [t.id, 0]))
+  // End-of-day subjects: a teacher can only be in one class in each of the last periods.
+  const endOf = new Map(subjects.map((s) => [s.id, Math.max(0, Math.round(s.endOfDay ?? 0))]))
+  const endCap = (n: number) => settings.dayNames.reduce((s, _, d) => s + Math.min(n, periodsOn(settings, d)), 0)
+  // ...and resting between them means every other one of those periods.
+  const endRestCap = (n: number) => settings.dayNames.reduce((s, _, d) => s + Math.ceil(Math.min(n, periodsOn(settings, d)) / 2), 0)
+  const endLoad = new Map<Id, number>(teachers.map((t) => [t.id, 0]))
   const issues: Issue[] = []
   const reqs: Requirement[] = []
 
@@ -84,6 +90,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     const tier = tierOf(t, r.subjectId)
     const newLoad = load.get(t.id)! + r.periods
     load.set(t.id, newLoad)
+    if (endOf.get(r.subjectId)) endLoad.set(t.id, endLoad.get(t.id)! + r.periods)
     if (!canTake(t, r.subjectId, isJunior(r.cls, settings))) {
       issues.push({
         kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
@@ -114,8 +121,12 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
       const l = load.get(t.id)!
       if (l + r.periods > cap) continue
       const overRest = Math.max(0, l + r.periods - restWeek)
+      const end = endOf.get(r.subjectId) ?? 0
+      const endAfter = end ? endLoad.get(t.id)! + r.periods : 0
+      const overEnd = end ? Math.max(0, endAfter - endCap(end)) : 0
+      const overEndRest = end ? Math.max(0, endAfter - endRestCap(end)) : 0
       const score =
-        TIER_COST[tierOf(t, r.subjectId)] + (12 * (l + r.periods)) / Math.max(1, cap) + 6 * overRest + rng() * 0.5
+        TIER_COST[tierOf(t, r.subjectId)] + (12 * (l + r.periods)) / Math.max(1, cap) + 6 * overRest + 8 * overEnd + 3 * overEndRest + rng() * 0.5
       if (score < bestScore) {
         bestScore = score
         best = t
@@ -138,6 +149,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     }
 
     load.set(best.id, load.get(best.id)! + r.periods)
+    if (endOf.get(r.subjectId)) endLoad.set(best.id, endLoad.get(best.id)! + r.periods)
     const tier = tierOf(best, r.subjectId)
     if (tier === 'none') {
       issues.push({

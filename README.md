@@ -9,6 +9,7 @@ A web app that builds a school's weekly routine. It matches teachers to subjects
 - Views by class, by teacher, and "who teaches what", plus a workload heatmap, print layouts and **Excel export**.
 - Each subject can be limited to certain classes (e.g. Art only in 5 to 7), and is added to those classes automatically.
 - Shorter days, such as a 4-period Saturday.
+- Subjects like Physical Ed. or Work Education can be kept to the last periods of the day.
 - **Add Section** makes 9B from 9A in one click; sections can have stream names like "12 Commerce".
 - Optional **sign-in and cloud saving** with an admin dashboard (schools, users, activity log). See [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md).
 
