@@ -1,3 +1,4 @@
+import { LAB_GRADES } from './labs'
 import type { ClassSection, CurriculumItem, SchoolData, Subject } from './types'
 
 /** Grades shown in the subject editor. */
@@ -43,7 +44,12 @@ export const subjectPeriods = (s: Subject) => Math.max(1, Math.round(s.periods ?
 
 /** The starting subject list for a new class: every subject taught in its grade. */
 export function curriculumFor(subjects: Subject[], grade: number): CurriculumItem[] {
-  return subjects.filter((s) => isOffered(s, grade)).map((s) => ({ subjectId: s.id, periods: subjectPeriods(s), pinnedTeacherId: null }))
+  return subjects.filter((s) => isOffered(s, grade)).map((s) => newItem(s, grade))
+}
+
+/** A subject as it first goes into a class: its default periods, and one lab session a week in 11 and 12 if it has labs. */
+function newItem(s: Subject, grade: number): CurriculumItem {
+  return { subjectId: s.id, periods: subjectPeriods(s), pinnedTeacherId: null, ...(s.lab && LAB_GRADES.includes(grade) ? { labSessions: 1 } : {}) }
 }
 
 /**
@@ -57,10 +63,12 @@ export function syncSubjectClasses(classes: ClassSection[], before: Subject | un
     const was = before !== undefined && isOffered(before, c.grade)
     const now = isOffered(after, c.grade)
     const has = c.curriculum.some((i) => i.subjectId === after.id)
-    if (now && !was && !has) {
-      return { ...c, curriculum: [...c.curriculum, { subjectId: after.id, periods: subjectPeriods(after), pinnedTeacherId: null }] }
-    }
+    if (now && !was && !has) return { ...c, curriculum: [...c.curriculum, newItem(after, c.grade)] }
     if (!now && was && has) return { ...c, curriculum: c.curriculum.filter((i) => i.subjectId !== after.id) }
+    // A subject that just got labs: give it a weekly lab session in classes 11 and 12.
+    if (has && after.lab && !before?.lab && LAB_GRADES.includes(c.grade)) {
+      return { ...c, curriculum: c.curriculum.map((i) => (i.subjectId === after.id && i.labSessions === undefined ? { ...i, labSessions: 1 } : i)) }
+    }
     return c
   })
 }

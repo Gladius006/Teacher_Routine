@@ -90,8 +90,9 @@ export const useStore = create<State>()(
         const from = [...siblings].sort((a, b) => a.section.localeCompare(b.section)).at(-1)
         const id = uid('c')
         // Pins are per section, so they are not copied.
-        const curriculum = from ? from.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods })) : []
-        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum }] } }))
+        const curriculum = from ? from.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, ...(labSessions !== undefined ? { labSessions } : {}) })) : []
+        const students = from?.students
+        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum, ...(students ? { students } : {}) }] } }))
         return id
       },
       copyCurriculum: (fromId, toIds) =>
@@ -99,7 +100,7 @@ export const useStore = create<State>()(
           const from = s.data.classes.find((c) => c.id === fromId)
           if (!from) return s
           // Pins are per section, so they are not copied.
-          const curriculum = from.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods }))
+          const curriculum = from.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, ...(labSessions !== undefined ? { labSessions } : {}) }))
           return {
             data: { ...s.data, classes: s.data.classes.map((c) => (toIds.includes(c.id) ? { ...c, curriculum } : c)) },
           }

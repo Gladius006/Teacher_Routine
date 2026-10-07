@@ -25,6 +25,17 @@ export interface Subject {
   periods?: number
   /** Only in the last N periods of each day, e.g. 2 for Physical Ed. Missing or 0 = any time. */
   endOfDay?: number
+  /** Set when the subject has labs (or practical rooms). */
+  lab?: LabInfo
+}
+
+export interface LabInfo {
+  /** How many lab rooms the school has for this subject. */
+  rooms: number
+  /** Students that fit in one lab; a bigger class is split into groups. */
+  capacity: number
+  /** Length of one lab session, in periods. */
+  periods: number
 }
 
 export interface Teacher {
@@ -46,6 +57,8 @@ export interface CurriculumItem {
   subjectId: Id
   periods: number
   pinnedTeacherId?: Id | null
+  /** Lab sessions each group gets in a week, for a subject with labs. Missing or 0 = no lab. */
+  labSessions?: number
 }
 
 export interface ClassSection {
@@ -53,6 +66,8 @@ export interface ClassSection {
   grade: number
   section: string
   curriculum: CurriculumItem[]
+  /** Number of students, used to split the class into lab groups. Missing = one group. */
+  students?: number
 }
 
 export interface SchoolData {
@@ -74,8 +89,29 @@ export interface Assignment {
 }
 
 export interface Cell {
+  /** Empty for a practical block period; see `lab`. */
   subjectId: Id
   teacherId: Id
+  /** Set when this period is part of a practical block, where the class's groups are spread over the labs. */
+  lab?: LabCell
+}
+
+export interface LabStation {
+  /** 0-based group number. */
+  group: number
+  subjectId: Id
+  teacherId: Id
+}
+
+export interface LabCell {
+  /** Block number within the class, so the periods of one block can be drawn together. */
+  block: number
+  /** Which period of the block this is (0-based) and how long the block is. */
+  part: number
+  length: number
+  groups: number
+  /** One group in each lab; groups not listed are off this block. */
+  stations: LabStation[]
 }
 
 /** Per class: cells indexed by day * periodsPerDay + period. null = free period. */
@@ -94,6 +130,7 @@ export type IssueKind =
   | 'pinInvalid'
   | 'notOffered'
   | 'notAtEnd'
+  | 'labClash'
 
 export type Severity = 'error' | 'warning' | 'info'
 

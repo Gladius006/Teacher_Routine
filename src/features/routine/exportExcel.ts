@@ -1,7 +1,9 @@
 import type { Workbook, Worksheet } from 'exceljs'
 import { className } from '../../engine/assign'
 import { isAdjacent, periodsOn } from '../../engine/blocks'
-import { teacherSlots } from '../../engine/evaluate'
+import { continues, teacherSlots } from '../../engine/evaluate'
+import { groupName } from '../../engine/labs'
+import { labCellText } from './labText'
 import type { Routine, SchoolData } from '../../engine/types'
 
 const INK = 'FF15201B'
@@ -195,7 +197,7 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
       c.border = BORDER
       if (n > t.maxPerDay) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: WARN_FILL } }
     })
-    for (let s = 0; s < week.length; s++) if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length) noRest++
+    for (let s = 0; s < week.length; s++) if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length && !(week[s + 1].length === 1 && continues(week[s]))) noRest++
     ;[[cTotal, total], [cLimit, t.maxPerWeek], [cNoRest, noRest]].forEach(([c, v]) => {
       const cell = wl.getCell(r, c)
       cell.value = v
@@ -210,6 +212,10 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
     weekSheet(wb, data, `Class ${className(c)}`, `Class ${className(c)}`, `Weekly routine. Built ${built}.`, (s) => {
       const x = cells[s]
       if (!x) return null
+      if (x.lab) {
+        const [top, bottom] = labCellText(x.lab, (id) => subject.get(id)?.name ?? '')
+        return { top, bottom }
+      }
       const subj = subject.get(x.subjectId)
       return { top: subj?.name ?? '', bottom: teacher.get(x.teacherId)?.name ?? '', color: subj?.color }
     })
@@ -223,12 +229,14 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
       const here = week[s]
       if (!here?.length) return null
       const p = s % P
-      const prevBusy = p > 0 && isAdjacent(settings, p - 1, Math.floor(s / P)) && (week[s - 1]?.length ?? 0) > 0
-      const nextBusy = isAdjacent(settings, p, Math.floor(s / P)) && (week[s + 1]?.length ?? 0) > 0
+      // The periods of one lab session aren't back to back.
+      const prev = week[s - 1], next = week[s + 1]
+      const prevBusy = p > 0 && isAdjacent(settings, p - 1, Math.floor(s / P)) && (prev?.length ?? 0) > 0 && !(here.length === 1 && continues(prev))
+      const nextBusy = isAdjacent(settings, p, Math.floor(s / P)) && (next?.length ?? 0) > 0 && !(next.length === 1 && continues(here))
       const subj = subject.get(here[0].subjectId)
       return {
-        top: `Class ${here.map((h) => className(cls.get(h.classId)!)).join(' + ')}`,
-        bottom: subj?.name ?? '',
+        top: `Class ${here.map((h) => `${className(cls.get(h.classId)!)}${h.lab ? ` ${groupName(h.group ?? 0)}` : ''}`).join(' + ')}`,
+        bottom: `${subj?.name ?? ''}${here[0].lab ? ' lab' : ''}`,
         color: subj?.color,
         flag: prevBusy || nextBusy,
       }

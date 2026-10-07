@@ -1,4 +1,5 @@
 import { periodsOn, restCapacityPerWeek } from './blocks'
+import { labPlan, labTeacherPeriods } from './labs'
 import type { Rng } from './rng'
 import type { Assignment, ClassSection, Id, Issue, SchoolData, Settings, SkillTier, Teacher } from './types'
 
@@ -38,6 +39,8 @@ interface Requirement {
   cls: ClassSection
   subjectId: Id
   periods: number
+  /** Theory periods plus lab periods: what this adds to the teacher's week. */
+  load: number
   pinnedTeacherId: Id | null
   eligible: Teacher[]
   order: number
@@ -51,6 +54,7 @@ interface Requirement {
 export function assignTeachers(data: SchoolData, rng: Rng) {
   const { settings, teachers, subjects } = data
   const subjectName = new Map(subjects.map((s) => [s.id, s.name]))
+  const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const teacherById = new Map(teachers.map((t) => [t.id, t]))
   const restWeek = restCapacityPerWeek(settings)
   const load = new Map<Id, number>(teachers.map((t) => [t.id, 0]))
@@ -66,13 +70,16 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
   let order = 0
   for (const cls of data.classes) {
     const junior = isJunior(cls, settings)
+    const plan = labPlan(cls, subjectById)
     for (const item of cls.curriculum) {
-      if (item.periods <= 0) continue
+      const lab = labTeacherPeriods(plan, item.subjectId)
+      if (item.periods <= 0 && lab === 0) continue
       const eligible = teachers.filter((t) => canTake(t, item.subjectId, junior))
       reqs.push({
         cls,
         subjectId: item.subjectId,
-        periods: item.periods,
+        periods: Math.max(0, item.periods),
+        load: Math.max(0, item.periods) + lab,
         pinnedTeacherId: item.pinnedTeacherId && teacherById.has(item.pinnedTeacherId) ? item.pinnedTeacherId : null,
         eligible,
         order: order++,
@@ -88,7 +95,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     if (!r.pinnedTeacherId) continue
     const t = teacherById.get(r.pinnedTeacherId)!
     const tier = tierOf(t, r.subjectId)
-    const newLoad = load.get(t.id)! + r.periods
+    const newLoad = load.get(t.id)! + r.load
     load.set(t.id, newLoad)
     if (endOf.get(r.subjectId)) endLoad.set(t.id, endLoad.get(t.id)! + r.periods)
     if (!canTake(t, r.subjectId, isJunior(r.cls, settings))) {
@@ -111,7 +118,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
   // Most constrained first: fewest eligible teachers, then the biggest chunk of periods.
   const open = reqs
     .filter((r) => !r.pinnedTeacherId)
-    .sort((a, b) => a.eligible.length - b.eligible.length || b.periods - a.periods || a.order - b.order)
+    .sort((a, b) => a.eligible.length - b.eligible.length || b.load - a.load || a.order - b.order)
 
   for (const r of open) {
     let best: Teacher | null = null
@@ -119,14 +126,14 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
     for (const t of r.eligible) {
       const cap = weeklyCapacity(t, settings)
       const l = load.get(t.id)!
-      if (l + r.periods > cap) continue
-      const overRest = Math.max(0, l + r.periods - restWeek)
+      if (l + r.load > cap) continue
+      const overRest = Math.max(0, l + r.load - restWeek)
       const end = endOf.get(r.subjectId) ?? 0
       const endAfter = end ? endLoad.get(t.id)! + r.periods : 0
       const overEnd = end ? Math.max(0, endAfter - endCap(end)) : 0
       const overEndRest = end ? Math.max(0, endAfter - endRestCap(end)) : 0
       const score =
-        TIER_COST[tierOf(t, r.subjectId)] + (12 * (l + r.periods)) / Math.max(1, cap) + 6 * overRest + 8 * overEnd + 3 * overEndRest + rng() * 0.5
+        TIER_COST[tierOf(t, r.subjectId)] + (12 * (l + r.load)) / Math.max(1, cap) + 6 * overRest + 8 * overEnd + 3 * overEndRest + rng() * 0.5
       if (score < bestScore) {
         bestScore = score
         best = t
@@ -148,7 +155,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
       continue
     }
 
-    load.set(best.id, load.get(best.id)! + r.periods)
+    load.set(best.id, load.get(best.id)! + r.load)
     if (endOf.get(r.subjectId)) endLoad.set(best.id, endLoad.get(best.id)! + r.periods)
     const tier = tierOf(best, r.subjectId)
     if (tier === 'none') {

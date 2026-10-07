@@ -3,7 +3,8 @@ import { ArrowClockwise, CaretLeft, CaretRight, FileXls, Info, Printer, Sparkle,
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, PageHeader, Segmented, Select, Shell, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { hasShortDays, isAdjacent } from '../../engine/blocks'
-import { teacherSlots } from '../../engine/evaluate'
+import { continues, teacherSlots } from '../../engine/evaluate'
+import { groupName } from '../../engine/labs'
 import { hashInputs } from '../../engine/schedule'
 import type { Id, Issue, Routine, SchoolData, Severity } from '../../engine/types'
 import { useStore } from '../../store/store'
@@ -13,7 +14,7 @@ import { PrintSheet } from './PrintSheet'
 import { exportRoutineToExcel } from './exportExcel'
 import { logActivity } from '../../cloud/session'
 
-type View = 'class' | 'teacher' | 'assign'
+type View = 'class' | 'teacher' | 'lab' | 'assign'
 
 /** Keeps the view and selection in the URL (#routine?view=teacher&id=t-01) so it survives reloads and can be shared. */
 function useRoutineParams() {
@@ -182,7 +183,8 @@ function useDerived(data: SchoolData, routine: Routine) {
       for (let s = 0; s < S; s++) {
         if (week[s].length > 1) cl.add(s)
         const p = s % P
-        if (week[s].length > 0 && isAdjacent(data.settings, p, Math.floor(s / P)) && week[s + 1]?.length > 0) {
+        // The periods of one lab session run together; they aren't back to back.
+        if (week[s].length > 0 && isAdjacent(data.settings, p, Math.floor(s / P)) && week[s + 1]?.length > 0 && !(week[s + 1].length === 1 && continues(week[s]))) {
           nr.add(s)
           nr.add(s + 1)
         }
@@ -208,8 +210,10 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
   const teacherById = useMemo(() => new Map(data.teachers.map((t) => [t.id, t])), [data.teachers])
   const classById = useMemo(() => new Map(data.classes.map((c) => [c.id, c])), [data.classes])
 
-  const view = (params.get('view') as View) || 'class'
-  const list = view === 'teacher' ? teachers : classes
+  const labSubjects = useMemo(() => data.subjects.filter((s) => s.lab), [data.subjects])
+  const rawView = (params.get('view') as View) || 'class'
+  const view: View = rawView === 'lab' && labSubjects.length === 0 ? 'class' : rawView
+  const list: { id: string }[] = view === 'teacher' ? teachers : view === 'lab' ? labSubjects : classes
   const selectedId = list.some((x) => x.id === params.get('id')) ? params.get('id')! : list[0]?.id
   const select = (v: View, id?: string) => {
     setHighlight(null)
@@ -222,7 +226,8 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
   }
 
   const onIssue = (issue: Issue) => {
-    if (issue.teacherId && (issue.kind === 'restMissed' || issue.kind === 'clash' || issue.kind === 'overDay')) select('teacher', issue.teacherId)
+    if (issue.kind === 'labClash' && issue.subjectId) select('lab', issue.subjectId)
+    else if (issue.teacherId && (issue.kind === 'restMissed' || issue.kind === 'clash' || issue.kind === 'overDay')) select('teacher', issue.teacherId)
     else if (issue.classId) select('class', issue.classId)
     else if (issue.teacherId) select('teacher', issue.teacherId)
     setHighlight(issue.day !== undefined ? { day: issue.day, period: issue.period ?? 0 } : null)
@@ -234,6 +239,29 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
       const grid = routine.grid[selectedId] ?? []
       return grid.map((c, s) => {
         if (!c) return null
+        if (c.lab) {
+          // One cell across the whole lab session, listing where each group is.
+          const lab = c.lab
+          if (lab.part > 0) return { key: `${s}`, label: '', covered: true }
+          const subjectName = (id: string) => subjectById.get(id)?.name ?? 'subject'
+          const off = Array.from({ length: lab.groups }, (_, g) => g).filter((g) => !lab.stations.some((st) => st.group === g))
+          const parts = lab.stations.map((st) => `${groupName(st.group)} ${subjectName(st.subjectId)}`)
+          if (off.length) parts.push(`${off.map(groupName).join(', ')} off`)
+          const full = lab.stations.map((st) => `${groupName(st.group)} ${subjectName(st.subjectId)} with ${teacherById.get(st.teacherId)?.name ?? 'teacher'}`)
+          const slotsIn = Array.from({ length: lab.length }, (_, q) => s + q)
+          const teachersIn = lab.stations.map((st) => st.teacherId)
+          return {
+            key: `${s}`,
+            lab: true,
+            span: lab.length,
+            color: 'var(--accent)',
+            title: lab.groups > 1 ? 'Practical' : `${subjectName(lab.stations[0].subjectId)} lab`,
+            subtitle: parts.join(' · '),
+            clash: teachersIn.some((t) => slotsIn.some((x) => clash.get(t)?.has(x))),
+            noRest: teachersIn.some((t) => slotsIn.some((x) => noRest.get(t)?.has(x))),
+            label: `Practical, ${lab.length} periods: ${full.join('; ')}${off.length ? `; ${off.map(groupName).join(', ')} off` : ''}`,
+          }
+        }
         const subj = subjectById.get(c.subjectId)
         const t = teacherById.get(c.teacherId)
         const nr = noRest.get(c.teacherId)?.has(s)
@@ -254,6 +282,26 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
         if (here.length === 0) return null
         const first = here[0]
         const subj = subjectById.get(first.subjectId)
+        if (here.length === 1 && first.lab) {
+          // A lab session is drawn as one cell across its periods.
+          const prev = week[s - 1]
+          const sameBlock = (x: typeof here | undefined) => x?.length === 1 && x[0].classId === first.classId && x[0].lab?.block === first.lab!.block
+          if (first.lab.part > 0 && sameBlock(prev)) return { key: `${s}`, label: '', covered: true }
+          let span = 1
+          while (span < first.lab.length - first.lab.part && sameBlock(week[s + span])) span++
+          const name = `${className(classById.get(first.classId)!)} ${groupName(first.group ?? 0)}`
+          const nr = Array.from({ length: span }, (_, q) => s + q).some((x) => noRest.get(selectedId)?.has(x))
+          return {
+            key: `${s}`,
+            lab: true,
+            span,
+            color: subj?.color,
+            title: `Class ${name}`,
+            subtitle: `${subj?.name ?? 'Subject'} lab`,
+            noRest: nr,
+            label: `Class ${name}, ${subj?.name} lab, ${span} periods${nr ? '. No rest next to this' : ''}`,
+          }
+        }
         const names = here.map((h) => className(classById.get(h.classId)!)).join(' + ')
         const nr = noRest.get(selectedId)?.has(s)
         return {
@@ -267,10 +315,36 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
         }
       })
     }
+    if (view === 'lab') {
+      const subj = subjectById.get(selectedId)
+      const rooms = subj?.lab?.rooms ?? 1
+      const S = data.settings.periodsPerDay * data.settings.dayNames.length
+      return Array.from({ length: S }, (_, s) => {
+        const users: { name: string; teacher: string }[] = []
+        for (const cls of classes) {
+          for (const st of routine.grid[cls.id]?.[s]?.lab?.stations ?? []) {
+            if (st.subjectId === selectedId) users.push({ name: `${className(cls)} ${groupName(st.group)}`, teacher: teacherById.get(st.teacherId)?.name ?? 'teacher' })
+          }
+        }
+        if (users.length === 0) return null
+        return {
+          key: `${s}`,
+          color: subj?.color,
+          title: `Class ${users.map((u) => u.name).join(' + ')}`,
+          subtitle: users.map((u) => u.teacher).join(', '),
+          clash: users.length > rooms,
+          label: `${users.map((u) => `Class ${u.name} with ${u.teacher}`).join('; ')}${users.length > rooms ? `. More groups than the ${rooms} ${rooms === 1 ? 'lab' : 'labs'}` : ''}`,
+        }
+      })
+    }
     return []
-  }, [view, selectedId, routine, slots, noRest, clash, subjectById, teacherById, classById])
+  }, [view, selectedId, routine, slots, noRest, clash, subjectById, teacherById, classById, classes, data.settings])
 
-  const selectedLabel = view === 'teacher' ? teacherById.get(selectedId)?.name : classById.get(selectedId) ? `Class ${className(classById.get(selectedId)!)}` : ''
+  const selectedLabel = view === 'teacher'
+    ? teacherById.get(selectedId)?.name
+    : view === 'lab'
+      ? `the ${subjectById.get(selectedId)?.name ?? ''} lab`
+      : classById.get(selectedId) ? `Class ${className(classById.get(selectedId)!)}` : ''
 
   return (
     <div className="flex flex-col gap-6">
@@ -291,15 +365,22 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
                 label="Show routine for"
                 value={view}
                 onChange={(v) => select(v)}
-                options={[{ value: 'class', label: 'Classes' }, { value: 'teacher', label: 'Teachers' }, { value: 'assign', label: 'Who teaches what' }]}
+                options={[
+                  { value: 'class', label: 'Classes' },
+                  { value: 'teacher', label: 'Teachers' },
+                  ...(labSubjects.length ? [{ value: 'lab' as View, label: 'Labs' }] : []),
+                  { value: 'assign', label: 'Who teaches what' },
+                ]}
               />
               {view !== 'assign' && (
                 <div className="flex min-w-0 flex-1 items-center gap-1 sm:justify-end">
                   <IconButton label={`Previous ${view}`} onClick={() => step(-1)}><CaretLeft weight="light" /></IconButton>
-                  <Select aria-label={view === 'teacher' ? 'Teacher' : 'Class'} className="min-w-0 flex-1 sm:w-60 sm:flex-none" value={selectedId} onChange={(e) => select(view, e.target.value)}>
+                  <Select aria-label={view === 'teacher' ? 'Teacher' : view === 'lab' ? 'Lab' : 'Class'} className="min-w-0 flex-1 sm:w-60 sm:flex-none" value={selectedId} onChange={(e) => select(view, e.target.value)}>
                     {view === 'teacher'
                       ? teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)
-                      : classes.map((c) => <option key={c.id} value={c.id}>Class {className(c)}</option>)}
+                      : view === 'lab'
+                        ? labSubjects.map((s) => <option key={s.id} value={s.id}>{s.name} lab{(s.lab?.rooms ?? 1) > 1 ? `s (${s.lab!.rooms})` : ''}</option>)
+                        : classes.map((c) => <option key={c.id} value={c.id}>Class {className(c)}</option>)}
                   </Select>
                   <IconButton label={`Next ${view}`} onClick={() => step(1)}><CaretRight weight="light" /></IconButton>
                 </div>
