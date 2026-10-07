@@ -70,6 +70,15 @@ Teacher
 - [ ] The editor shows "used X of Y slots" and warns when X exceeds Y (days × periods per day).
 - [ ] Copying a class's curriculum to other sections of the same grade takes one action.
 
+**R4a. Lab and Practical.** The Subjects page has a "Lab and Practical" part where any subject can be added as a lab. Each lab has: the classes (grades) that have it (default 11 and 12), the number of groups a class is split into for it (named A, B, C, D…), sessions a week for each group, session length in periods, and how many lab rooms the school has.
+- [ ] A class gets a lab if it is in one of the lab's grades and has the subject. Nothing is set on the class itself.
+- [ ] Groups exist only for labs. In a lab time the class has no ordinary lesson: each lab takes one group, and groups without a lab are free.
+- [ ] Labs run side by side where they can, to keep the class's free time low: 4 groups with Physics, Chemistry and Biology labs need 4 lab times a week, with one group free in each. Labs of different lengths use separate lab times. The class form shows this table.
+- [ ] Each lab is taken by the class's own teacher for that subject. A lab time is one run of periods on one day, never split by lunch, and its periods don't count as back to back for the teacher. The routine picks lab times when those teachers are free.
+- [ ] A lab is never used by more groups at once than the school has rooms for it (e.g. 11 and 12 share one Physics lab); if it can't be avoided, it is reported.
+- [ ] Lab periods count towards the class's week and the teacher's load. A lab time shows as "Lab — A: Physics, B: Chemistry, C: Biology, D: Free"; the class routine can be shown for one group; teachers see "11 Sci, Group A"; a Labs view shows each lab's week. Print and Excel show the same.
+- [ ] Lab settings saved by earlier versions of this feature are ignored.
+
 **R5. Teacher assignment rules.** Each (class, subject) pair is taught by one teacher for the whole week.
 - Senior classes: only teachers with the subject as a primary or secondary skill. Primary is preferred.
 - Junior classes: any teacher may be chosen. Preference order: primary skill, then secondary skill, then any teacher.

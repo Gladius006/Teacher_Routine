@@ -43,7 +43,12 @@ export const subjectPeriods = (s: Subject) => Math.max(1, Math.round(s.periods ?
 
 /** The starting subject list for a new class: every subject taught in its grade. */
 export function curriculumFor(subjects: Subject[], grade: number): CurriculumItem[] {
-  return subjects.filter((s) => isOffered(s, grade)).map((s) => ({ subjectId: s.id, periods: subjectPeriods(s), pinnedTeacherId: null }))
+  return subjects.filter((s) => isOffered(s, grade)).map(newItem)
+}
+
+/** A subject as it first goes into a class, with its default periods. */
+function newItem(s: Subject): CurriculumItem {
+  return { subjectId: s.id, periods: subjectPeriods(s), pinnedTeacherId: null }
 }
 
 /**
@@ -57,9 +62,7 @@ export function syncSubjectClasses(classes: ClassSection[], before: Subject | un
     const was = before !== undefined && isOffered(before, c.grade)
     const now = isOffered(after, c.grade)
     const has = c.curriculum.some((i) => i.subjectId === after.id)
-    if (now && !was && !has) {
-      return { ...c, curriculum: [...c.curriculum, { subjectId: after.id, periods: subjectPeriods(after), pinnedTeacherId: null }] }
-    }
+    if (now && !was && !has) return { ...c, curriculum: [...c.curriculum, newItem(after)] }
     if (!now && was && has) return { ...c, curriculum: c.curriculum.filter((i) => i.subjectId !== after.id) }
     return c
   })

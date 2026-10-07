@@ -86,16 +86,3 @@ describe('store: junior subjects', () => {
     expect(useStore.getState().data.teachers[1].junior).toBeUndefined()
   })
 })
-
-describe('store: old routines', () => {
-  it('drops a routine with periods it cannot show (from the removed lab feature)', () => {
-    const data = sampleSchool()
-    const r = generateRoutine(data, { seed: 1, maxIterations: 5_000 })
-    const first = Object.keys(r.grid)[0]
-    const broken = { ...r, grid: { ...r.grid, [first]: r.grid[first].map((c, i) => (i === 0 ? { subjectId: '', teacherId: '' } : c)) } }
-    useStore.getState().loadCloud(data, broken, true)
-    expect(useStore.getState().routine).toBeNull()
-    useStore.getState().loadCloud(data, r, true)
-    expect(useStore.getState().routine).not.toBeNull()
-  })
-})

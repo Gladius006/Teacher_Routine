@@ -1,3 +1,4 @@
+import { cleanLab } from '../engine/labs'
 import type { SchoolData } from '../engine/types'
 
 export const FILE_VERSION = 1
@@ -31,7 +32,8 @@ export function importSchool(text: string): SchoolData {
   ) throw bad('settings')
 
   if (!Array.isArray(d.subjects) || !d.subjects.every((x) => x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStr(x.color) &&
-    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods)) && (x.endOfDay === undefined || isNum(x.endOfDay))))
+    (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods)) && (x.endOfDay === undefined || isNum(x.endOfDay)) &&
+    (x.lab === undefined || (!!x.lab && typeof x.lab === 'object'))))
     throw bad('subjects')
   if (!Array.isArray(d.teachers) || !d.teachers.every((x) =>
     x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && (x.junior === undefined || isStrArr(x.junior)) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))
@@ -41,5 +43,7 @@ export function importSchool(text: string): SchoolData {
     x.curriculum.every((c) => c && isStr(c.subjectId) && isNum(c.periods))))
     throw bad('classes')
 
-  return { settings: s, subjects: d.subjects, teachers: d.teachers, classes: d.classes }
+  return { settings: s, subjects: d.subjects.map(cleanLab), teachers: d.teachers, classes: d.classes }
 }
+
+

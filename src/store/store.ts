@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { CLOUD_ENABLED } from '../cloud/client'
 import { syncSubjectClasses } from '../engine/grades'
+import { cleanLab } from '../engine/labs'
 import { emptySchool } from '../engine/sample'
 import { nextSection } from '../engine/sections'
 import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
@@ -30,10 +31,6 @@ interface State {
   /** Replaces everything with a school loaded from the cloud. */
   loadCloud: (data: SchoolData, routine: Routine | null, started: boolean) => void
 }
-
-/** A saved routine this version can show. Routines built with the removed lab feature have periods with no subject. */
-export const usableRoutine = (r: Routine | null | undefined): Routine | null =>
-  r && Object.values(r.grid ?? {}).every((cells) => cells.every((c) => !c || !!c.subjectId)) ? r : null
 
 const upsert = <T extends { id: Id }>(list: T[], item: T) =>
   list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]
@@ -112,19 +109,12 @@ export const useStore = create<State>()(
       replaceData: (data) => set({ data, routine: null, started: true }),
       setRoutine: (routine) => set({ routine, started: true }),
       setTheme: (theme) => set({ theme }),
-      loadCloud: (data, routine, started) => set({ data, routine: usableRoutine(routine), started }),
+      loadCloud: (data, routine, started) => set({ data: { ...data, subjects: data.subjects.map(cleanLab) }, routine, started }),
     }),
     CLOUD_ENABLED
       ? // Signed-in mode: school data lives in the database and is never left in this browser.
         { name: 'routine-builder-prefs', version: 1, partialize: (s) => ({ theme: s.theme }) }
-      : {
-          name: 'routine-builder',
-          version: 1,
-          merge: (saved, current) => {
-            const s = (saved ?? {}) as Partial<State>
-            return { ...current, ...s, routine: usableRoutine(s.routine) }
-          },
-        },
+      : { name: 'routine-builder', version: 1 },
   ),
 )
 

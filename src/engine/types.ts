@@ -25,6 +25,21 @@ export interface Subject {
   periods?: number
   /** Only in the last N periods of each day, e.g. 2 for Physical Ed. Missing or 0 = any time. */
   endOfDay?: number
+  /** Set when the subject has a lab or practical (see the Lab and Practical part of the Subjects page). */
+  lab?: LabInfo
+}
+
+export interface LabInfo {
+  /** Classes (grades) that have this lab, e.g. [11, 12]. A class gets it if it also has the subject. */
+  grades: number[]
+  /** Groups a class is split into for this lab: A, B, C... */
+  groups: number
+  /** Lab sessions each group gets in a week. */
+  sessions: number
+  /** Length of one lab session, in periods. */
+  periods: number
+  /** How many lab rooms the school has for this subject. */
+  rooms: number
 }
 
 export interface Teacher {
@@ -74,8 +89,29 @@ export interface Assignment {
 }
 
 export interface Cell {
+  /** Empty for a practical block period; see `lab`. */
   subjectId: Id
   teacherId: Id
+  /** Set when this period is part of a practical block, where the class's groups are spread over the labs. */
+  lab?: LabCell
+}
+
+export interface LabStation {
+  /** 0-based group number: 0 = A. */
+  group: number
+  subjectId: Id
+  teacherId: Id
+}
+
+export interface LabCell {
+  /** Block number within the class, so the periods of one block can be drawn together. */
+  block: number
+  /** Which period of the block this is (0-based) and how long the block is. */
+  part: number
+  length: number
+  groups: number
+  /** Which group is in which lab; groups not listed are free this block. */
+  stations: LabStation[]
 }
 
 /** Per class: cells indexed by day * periodsPerDay + period. null = free period. */
@@ -94,6 +130,7 @@ export type IssueKind =
   | 'pinInvalid'
   | 'notOffered'
   | 'notAtEnd'
+  | 'labClash'
 
 export type Severity = 'error' | 'warning' | 'info'
 

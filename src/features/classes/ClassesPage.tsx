@@ -5,6 +5,7 @@ import { canTake, className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
+import { groupName, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
 import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -66,7 +67,9 @@ export function ClassesPage() {
                 {list.map((c) => {
                   const misplaced = c.curriculum.filter((i) => !isOffered(subjectById.get(i.subjectId), c.grade))
                   const valid = c.curriculum.filter((i) => isOffered(subjectById.get(i.subjectId), c.grade))
-                  const used = valid.reduce((n, i) => n + i.periods, 0)
+                  const plan = labPlan({ ...c, curriculum: valid }, subjectById)
+                  const labs = labPeriods(plan)
+                  const used = valid.reduce((n, i) => n + i.periods, 0) + labs
                   const over = used > slots
                   return (
                     <li key={c.id}>
@@ -89,7 +92,12 @@ export function ClassesPage() {
                               <IconButton label={`Delete ${className(c)}`} className="hover:text-danger" onClick={() => setDeleting(c)}><Trash weight="light" /></IconButton>
                             </div>
                           </div>
-                          <CompositionBar items={valid} slots={slots} byId={subjectById} />
+                          <CompositionBar items={valid} slots={slots} byId={subjectById} labs={labs} />
+                          {plan && (
+                            <p className="mt-2 text-[13px] text-ink-2">
+                              Labs: groups A–{groupName(plan.groups - 1)}, {labs} periods a week
+                            </p>
+                          )}
                           {over && <p className="mt-2 text-[13px] text-danger">{used - slots} more than the week has. Remove some periods.</p>}
                           {misplaced.length > 0 && (
                             <p className="mt-2 text-[13px] leading-snug text-warn">
@@ -192,14 +200,15 @@ function SectionNameEditor({ cls, onDone }: { cls: ClassSection; onDone: () => v
 }
 
 /** Proportional bar of the week, one segment per subject, in its color. */
-function CompositionBar({ items, slots, byId }: { items: CurriculumItem[]; slots: number; byId: Map<string, Subject> }) {
-  const used = items.reduce((n, i) => n + i.periods, 0)
+function CompositionBar({ items, slots, byId, labs = 0 }: { items: CurriculumItem[]; slots: number; byId: Map<string, Subject>; labs?: number }) {
+  const used = items.reduce((n, i) => n + i.periods, 0) + labs
   const total = Math.max(slots, used)
   return (
     <div className="mt-4 flex h-2 gap-px overflow-hidden rounded-full" role="img" aria-label={`${used} of ${slots} periods planned`}>
       {items.map((i) => (
         <span key={i.subjectId} className="h-full first:rounded-l-full" style={{ width: `${(i.periods / total) * 100}%`, background: byId.get(i.subjectId)?.color ?? 'var(--ink-3)' }} />
       ))}
+      {labs > 0 && <span className="h-full bg-[repeating-linear-gradient(135deg,var(--ink-3)_0_2px,transparent_2px_5px)]" style={{ width: `${(labs / total) * 100}%` }} />}
       {used < slots && <span className="h-full flex-1 rounded-r-full bg-shell" />}
     </div>
   )
@@ -224,7 +233,9 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const lastOf = (g: number) => [...classes].filter((c) => c.grade === g).sort((a, b) => a.section.localeCompare(b.section)).at(-1)
   const startFor = (g: number): CurriculumItem[] => {
     const sib = lastOf(g)
-    return sib ? sib.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods, pinnedTeacherId: null })) : curriculumFor(subjects, g)
+    return sib
+      ? sib.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods, pinnedTeacherId: null }))
+      : curriculumFor(subjects, g)
   }
   const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? startFor(9))
   const [removedIds, setRemovedIds] = useState<string[]>([])
@@ -232,7 +243,9 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const slots = slotsPerWeek(settings)
   const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const offered = (id: string) => isOffered(subjectById.get(id), grade)
-  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0)
+  // Labs come from the Lab and Practical part of the Subjects page.
+  const plan = labPlan({ id: '', grade, section: '', curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById)
+  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan)
   const junior = grade <= settings.juniorMaxGrade
 
   const sectionError = nameTaken(section, grade, classes.filter((c) => c.id !== cls?.id))
@@ -293,6 +306,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
           {junior ? <Badge tone="accent">Junior: any teacher can take it</Badge> : <Badge>Senior: only skilled teachers</Badge>}
         </div>
       </div>
+
 
       <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -357,11 +371,57 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
         )}
       </div>
 
+      {plan && <LabRotation plan={plan} byId={subjectById} />}
+
       <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onDone}>Cancel</Button>
         <Button variant="primary" type="submit">{cls ? 'Save Changes' : 'Add Class'}</Button>
       </div>
     </form>
+  )
+}
+
+/** How the class's groups use the labs: one row per lab time. Groups without a lab are free. */
+function LabRotation({ plan, byId }: { plan: LabPlan; byId: Map<string, Subject> }) {
+  const groups = Array.from({ length: plan.groups }, (_, g) => g)
+  const total = labPeriods(plan)
+  return (
+    <section aria-labelledby="lab-rotation">
+      <h3 id="lab-rotation" className="text-sm font-medium">Labs</h3>
+      <p className="mt-1 text-[13px] text-ink-3">
+        {plan.groups === 1
+          ? `The whole class goes to the lab together, ${total} periods a week.`
+          : `For labs the class is split into groups ${groupName(0)}–${groupName(plan.groups - 1)}. They use the labs at the same time where they can: ${plan.blocks.length} lab ${plan.blocks.length === 1 ? 'time' : 'times'}, ${total} periods a week. The routine picks the days. Set labs on the Subjects page.`}
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[22rem] border-separate border-spacing-1 text-left text-[13px]">
+          <thead>
+            <tr>
+              <th scope="col" className="w-28 font-medium text-ink-3"><span className="sr-only">Lab time</span></th>
+              {groups.map((g) => <th key={g} scope="col" className="text-center font-medium text-ink-3">Group {groupName(g)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {plan.blocks.map((block, b) => (
+              <tr key={b}>
+                <th scope="row" className="font-medium text-ink-2">
+                  Lab {b + 1} <span className="font-normal text-ink-3">({block.length} {block.length === 1 ? 'period' : 'periods'})</span>
+                </th>
+                {groups.map((g) => {
+                  const st = block.stations.find((x) => x.group === g)
+                  const s = st && byId.get(st.subjectId)
+                  return (
+                    <td key={g} className={cx('rounded-lg px-2 py-1.5 text-center', s ? 'bg-shell font-medium' : 'text-ink-3')}>
+                      {s ? <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-full" style={{ background: s.color }} />{s.name}</span> : 'Free'}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

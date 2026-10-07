@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { BookOpenText, Check, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
-import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
+import { BookOpenText, Check, Flask, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
+import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Select, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
+import { DEFAULT_LAB, DEFAULT_LAB_GRADES, groupNames, isLab } from '../../engine/labs'
 import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
-import type { Subject } from '../../engine/types'
+import type { LabInfo, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
 /** Subject colors in rainbow order, as shown in the picker. */
@@ -75,6 +76,7 @@ export function SubjectsPage() {
                       <p className="mt-0.5 text-sm text-ink-2">
                         {s.grades ? (s.grades.length ? `Classes ${formatGrades(s.grades)}` : 'No classes') : 'All classes'}
                         {s.endOfDay ? <span className="text-ink-3">, end of day</span> : null}
+                        {isLab(s.lab) ? <span className="text-ink-3">, lab</span> : null}
                       </p>
                       <p className="text-[13px] text-ink-3">
                         {u.teachers} {u.teachers === 1 ? 'teacher' : 'teachers'}, {u.classes} {u.classes === 1 ? 'class' : 'classes'}
@@ -106,7 +108,161 @@ export function SubjectsPage() {
             : `It will be removed from ${u.teachers} ${u.teachers === 1 ? 'teacher' : 'teachers'} and from the timetable of ${u.classes} ${u.classes === 1 ? 'class' : 'classes'}.`
         })()}
       </ConfirmDialog>
+
+      {subjects.length > 0 && <LabsSection />}
     </>
+  )
+}
+
+/* ---------- Lab and Practical ---------- */
+
+function LabsSection() {
+  const subjects = useStore((s) => s.data.subjects)
+  const classes = useStore((s) => s.data.classes)
+  const upsertSubject = useStore((s) => s.upsertSubject)
+  const [editing, setEditing] = useState<Subject | 'new' | null>(null)
+  const [removing, setRemoving] = useState<Subject | null>(null)
+  const labs = subjects.filter((s) => isLab(s.lab))
+  const free = subjects.filter((s) => !isLab(s.lab))
+  /** Classes that get this lab: in one of its grades, and they have the subject. */
+  const classesWith = (s: Subject) =>
+    classes
+      .filter((c) => s.lab!.grades.includes(c.grade) && c.curriculum.some((i) => i.subjectId === s.id))
+      .sort((a, b) => a.grade - b.grade || a.section.localeCompare(b.section))
+  const remove = (s: Subject) => {
+    const { lab: _lab, ...rest } = s
+    upsertSubject(rest)
+  }
+
+  return (
+    <section aria-labelledby="labs-heading" className="mt-16">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 id="labs-heading" className="text-2xl font-semibold tracking-tight">Lab and Practical</h2>
+          <p className="mt-1.5 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+            For lab work a class is split into groups (A, B, C…). While some groups are in a lab, the others are free, and the class has no ordinary lesson. Each lab is taken by the class's own teacher for that subject.
+          </p>
+        </div>
+        <Button icon={<Plus weight="bold" />} disabled={free.length === 0} onClick={() => setEditing('new')}>Add Lab</Button>
+      </div>
+
+      {labs.length === 0 ? (
+        <Shell>
+          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+            <span aria-hidden className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-2xl text-accent"><Flask weight="light" /></span>
+            <p className="font-medium">No labs or practicals yet</p>
+            <p className="max-w-[48ch] text-sm text-ink-2">Add a subject like Physics, Chemistry or Biology to give classes 11 and 12 lab sessions in groups.</p>
+          </div>
+        </Shell>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {labs.map((s) => {
+            const lab = s.lab!
+            const using = classesWith(s)
+            return (
+              <li key={s.id}>
+                <Shell>
+                  <div className="flex items-start gap-4 p-4 pl-5">
+                    <span aria-hidden className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full text-xl text-white" style={{ background: s.color }}>
+                      <Flask weight="light" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-semibold tracking-tight">{s.name} lab</h3>
+                      <p className="mt-0.5 text-sm text-ink-2">
+                        Groups {groupNames(lab.groups)} · {lab.sessions} {lab.sessions === 1 ? 'session' : 'sessions'} a week each, {lab.periods} {lab.periods === 1 ? 'period' : 'periods'} long
+                      </p>
+                      <p className="text-[13px] text-ink-3">
+                        {lab.rooms} {lab.rooms === 1 ? 'lab room' : 'lab rooms'} · {using.length ? `Classes ${using.map(className).join(', ')}` : `No class in ${formatGrades(lab.grades)} has ${s.name} yet`}
+                      </p>
+                    </div>
+                    <IconButton label={`Edit ${s.name} lab`} onClick={() => setEditing(s)}><PencilSimple weight="light" /></IconButton>
+                    <IconButton label={`Remove ${s.name} lab`} className="hover:text-danger" onClick={() => setRemoving(s)}><Trash weight="light" /></IconButton>
+                  </div>
+                </Shell>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add lab or practical' : `Edit ${editing ? editing.name : ''} lab`}>
+        {editing !== null && <LabForm key={editing === 'new' ? 'new' : editing.id} subject={editing === 'new' ? null : editing} choices={free} onDone={() => setEditing(null)} />}
+      </Dialog>
+      <ConfirmDialog
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => removing && remove(removing)}
+        title={`Remove the ${removing?.name ?? ''} lab?`}
+        confirmLabel="Remove Lab"
+      >
+        {removing?.name} stays as a subject. Its lab sessions are taken out of the routine next time you generate.
+      </ConfirmDialog>
+    </section>
+  )
+}
+
+function LabForm({ subject, choices, onDone }: { subject: Subject | null; choices: Subject[]; onDone: () => void }) {
+  const subjects = useStore((s) => s.data.subjects)
+  const periodsPerDay = useStore((s) => s.data.settings.periodsPerDay)
+  const upsertSubject = useStore((s) => s.upsertSubject)
+  const [subjectId, setSubjectId] = useState(subject?.id ?? choices[0]?.id ?? '')
+  const chosen = subjects.find((s) => s.id === subjectId)
+  const allowed = (s: Subject | undefined) => (s?.grades ?? GRADE_OPTIONS)
+  const startGrades = (s: Subject | undefined) => DEFAULT_LAB_GRADES.filter((g) => allowed(s).includes(g))
+  const [lab, setLab] = useState<LabInfo>(subject?.lab ?? { ...DEFAULT_LAB, periods: Math.min(DEFAULT_LAB.periods, periodsPerDay), grades: startGrades(chosen) })
+  const set = (patch: Partial<LabInfo>) => setLab((l) => ({ ...l, ...patch }))
+  const [tried, setTried] = useState(false)
+  const gradesError = lab.grades.length === 0 ? 'Choose at least one class.' : undefined
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setTried(true)
+    if (!chosen || gradesError) return
+    upsertSubject({ ...chosen, lab })
+    onDone()
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
+      {subject ? null : (
+        <Field label="Subject" htmlFor="lab-subject" hint="Its teacher for each class takes that class's lab.">
+          <Select id="lab-subject" value={subjectId} onChange={(e) => { setSubjectId(e.target.value); set({ grades: startGrades(subjects.find((s) => s.id === e.target.value)) }) }}>
+            {choices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+        </Field>
+      )}
+      <fieldset>
+        <legend className="text-sm font-medium">Classes</legend>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {allowed(chosen).map((g) => (
+            <ToggleChip key={g} pressed={lab.grades.includes(g)} onClick={() => set({ grades: lab.grades.includes(g) ? lab.grades.filter((x) => x !== g) : [...lab.grades, g].sort((a, b) => a - b) })}>
+              <span className="sr-only">Class </span>{g}
+            </ToggleChip>
+          ))}
+        </div>
+        {tried && gradesError
+          ? <p role="alert" className="mt-2 text-[13px] text-danger">{gradesError}</p>
+          : <p className="mt-2 text-[13px] text-ink-3">Every class of these grades that has {chosen?.name ?? 'the subject'} gets the lab.</p>}
+      </fieldset>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field label="Number of groups" htmlFor="lab-groups" hint={`Groups ${groupNames(lab.groups)}.`}>
+          <Stepper id="lab-groups" label="number of groups" value={lab.groups} min={1} max={10} onChange={(n) => set({ groups: n })} />
+        </Field>
+        <Field label="Sessions a week" htmlFor="lab-sessions" hint="For each group.">
+          <Stepper id="lab-sessions" label="lab sessions a week for each group" value={lab.sessions} min={1} max={5} onChange={(n) => set({ sessions: n })} />
+        </Field>
+        <Field label="Session length" htmlFor="lab-len" hint={lab.periods === 1 ? 'One period.' : `${lab.periods} periods in a row.`}>
+          <Stepper id="lab-len" label="lab session length in periods" value={lab.periods} min={1} max={Math.max(1, periodsPerDay)} onChange={(n) => set({ periods: n })} />
+        </Field>
+        <Field label="Number of labs" htmlFor="lab-rooms" hint="Lab rooms the school has for it.">
+          <Stepper id="lab-rooms" label="number of lab rooms" value={lab.rooms} min={1} max={10} onChange={(n) => set({ rooms: n })} />
+        </Field>
+      </div>
+      <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">
+        <Button variant="ghost" onClick={onDone}>Cancel</Button>
+        <Button variant="primary" type="submit" disabled={!chosen}>{subject ? 'Save Changes' : 'Add Lab'}</Button>
+      </div>
+    </form>
   )
 }
 
@@ -160,7 +316,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       document.getElementById(nameError ? 'subj-name' : codeError ? 'subj-code' : 'subj-grades')?.focus()
       return
     }
-    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods, ...(endOfDay > 0 ? { endOfDay } : {}) })
+    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods, ...(endOfDay > 0 ? { endOfDay } : {}), ...(subject?.lab ? { lab: subject.lab } : {}) })
     onDone()
   }
 
