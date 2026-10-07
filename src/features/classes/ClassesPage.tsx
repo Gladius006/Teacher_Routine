@@ -5,7 +5,7 @@ import { canTake, className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
-import { LAB_GRADES, groupName, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
+import { LAB_GRADES, groupName, labGroups, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
 import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -95,7 +95,7 @@ export function ClassesPage() {
                           <CompositionBar items={valid} slots={slots} byId={subjectById} labs={labs} />
                           {plan && (
                             <p className="mt-2 text-[13px] text-ink-2">
-                              Labs: {plan.groups} {plan.groups === 1 ? 'group' : 'groups'}, {plan.blocks.length} practical {plan.blocks.length === 1 ? 'session' : 'sessions'} of {plan.length} {plan.length === 1 ? 'period' : 'periods'}
+                              Labs: {plan.groups} {plan.groups === 1 ? 'section' : 'sections'}, {plan.blocks.length} practical {plan.blocks.length === 1 ? 'session' : 'sessions'} of {plan.length} {plan.length === 1 ? 'period' : 'periods'}
                             </p>
                           )}
                           {over && <p className="mt-2 text-[13px] text-danger">{used - slots} more than the week has. Remove some periods.</p>}
@@ -238,7 +238,8 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
       : curriculumFor(subjects, g)
   }
   const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? startFor(9))
-  const [students, setStudents] = useState(cls?.students ?? lastOf(9)?.students ?? 0)
+  const sectionsOf = (c: ClassSection | undefined) => (c ? labGroups(c, new Map(subjects.map((s) => [s.id, s]))) : 1)
+  const [labSections, setLabSections] = useState(sectionsOf(cls ?? lastOf(9)))
   const [removedIds, setRemovedIds] = useState<string[]>([])
   const [tried, setTried] = useState(false)
   const slots = slotsPerWeek(settings)
@@ -246,7 +247,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const offered = (id: string) => isOffered(subjectById.get(id), grade)
   const labsOn = LAB_GRADES.includes(grade)
   const hasLab = (id: string) => labsOn && !!subjectById.get(id)?.lab
-  const plan = labsOn ? labPlan({ id: '', grade, section: '', students, curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById) : null
+  const plan = labsOn ? labPlan({ id: '', grade, section: '', labSections, curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById) : null
   const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan)
   const junior = grade <= settings.juniorMaxGrade
   /** A subject going into this class: one lab session a week if it has labs. */
@@ -261,7 +262,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
     // For a new class, follow the grade, leaving out any subject removed by hand.
     setItems(startFor(g).filter((i) => !removedIds.includes(i.subjectId)))
     if (!sectionTouched) setSection(nextSection(classes.filter((c) => c.grade === g)))
-    if (lastOf(g)?.students) setStudents(lastOf(g)!.students!)
+    if (lastOf(g)) setLabSections(sectionsOf(lastOf(g)))
   }
   const removeItem = (idx: number) => {
     setRemovedIds((r) => [...r, items[idx].subjectId])
@@ -283,7 +284,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
     const curriculum = items
       .map(({ labSessions, ...i }) => (labsOn && labSessions !== undefined ? { ...i, labSessions } : i))
       .filter((i) => i.periods > 0 || ((i as CurriculumItem).labSessions ?? 0) > 0)
-    upsertClass({ id: cls?.id ?? uid('c'), grade, section: cleanSection(section), curriculum, ...(labsOn && students > 0 ? { students } : {}) })
+    upsertClass({ id: cls?.id ?? uid('c'), grade, section: cleanSection(section), curriculum, ...(labsOn ? { labSections } : {}) })
     onDone()
   }
 
@@ -318,11 +319,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
 
       {labsOn && (
         <Field
-          label="Students"
-          htmlFor="class-students"
-          hint={students > 0 ? 'Used to split the class into lab groups.' : 'Leave at 0 if the whole class goes to a lab together.'}
+          label="Lab sections"
+          htmlFor="class-lab-sections"
+          hint={labSections > 1 ? 'The class is split into this many sections for labs. They rotate through the labs together.' : 'The whole class goes to the lab together.'}
         >
-          <Stepper id="class-students" label="students in the class" value={students} min={0} max={500} onChange={setStudents} />
+          <Stepper id="class-lab-sections" label="lab sections" value={labSections} min={1} max={10} onChange={setLabSections} />
         </Field>
       )}
 
@@ -367,7 +368,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
                   </IconButton>
                   {hasLab(item.subjectId) && (
                     <div className="col-span-full flex flex-wrap items-center gap-3 px-2 pb-1 text-[13px] text-ink-2">
-                      <label htmlFor={`lab-${idx}`}>Lab sessions a week, per group</label>
+                      <label htmlFor={`lab-${idx}`}>Lab sessions a week, per section</label>
                       <Stepper id={`lab-${idx}`} label={`${subjectById.get(item.subjectId)?.name ?? 'subject'} lab sessions a week`} value={item.labSessions ?? 0} min={0} max={5} onChange={(n) => update(idx, { labSessions: n })} />
                       <span className="text-ink-3">
                         {subjectById.get(item.subjectId)!.lab!.periods} {subjectById.get(item.subjectId)!.lab!.periods === 1 ? 'period' : 'periods'} each, with the subject teacher
@@ -418,7 +419,7 @@ function LabRotation({ plan, byId }: { plan: LabPlan; byId: Map<string, Subject>
       <p className="mt-1 text-[13px] text-ink-3">
         {plan.groups === 1
           ? `The whole class goes to the labs together: ${plan.blocks.length} ${plan.blocks.length === 1 ? 'session' : 'sessions'} of ${per} a week.`
-          : `${plan.groups} groups take turns in the labs: ${plan.blocks.length} sessions of ${per} a week, all groups at the same time. The routine picks the days.`}
+          : `${plan.groups} lab sections take turns in the labs: ${plan.blocks.length} sessions of ${per} a week, all sections at the same time. The routine picks the days.`}
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[22rem] border-separate border-spacing-1 text-left text-[13px]">

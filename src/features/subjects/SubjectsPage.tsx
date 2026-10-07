@@ -239,7 +239,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       <fieldset>
         <legend className="text-sm font-medium">Lab or practical</legend>
         <p className="mt-1 text-[13px] text-ink-3">
-          For classes 11 and 12. A class bigger than a lab is split into groups that take turns in the labs, each with the subject teacher.
+          For classes 11 and 12. A class can be split into lab sections that take turns in the labs, each with the subject teacher.
         </p>
         <div className="mt-3">
           <Segmented
@@ -250,12 +250,9 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
           />
         </div>
         {lab && (
-          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Number of labs" htmlFor="lab-rooms" hint="Rooms the school has for it.">
               <Stepper id="lab-rooms" label="number of labs" value={lab.rooms} min={1} max={10} onChange={(n) => setLabField({ rooms: n })} />
-            </Field>
-            <Field label="Students per lab" htmlFor="lab-cap" hint="Bigger classes are split.">
-              <Stepper id="lab-cap" label="students per lab" value={lab.capacity} min={1} max={200} onChange={(n) => setLabField({ capacity: n })} />
             </Field>
             <Field label="Session length" htmlFor="lab-len" hint={lab.periods === 1 ? 'One period.' : `${lab.periods} periods in a row.`}>
               <Stepper id="lab-len" label="lab session length in periods" value={lab.periods} min={1} max={Math.max(1, periodsPerDay)} onChange={(n) => setLabField({ periods: n })} />

@@ -2,7 +2,7 @@ import type { ClassSection, CurriculumItem, Id, LabInfo, Subject } from './types
 
 /** Classes that can have lab sessions. */
 export const LAB_GRADES = [11, 12]
-export const DEFAULT_LAB: LabInfo = { rooms: 1, capacity: 25, periods: 2 }
+export const DEFAULT_LAB: LabInfo = { rooms: 1, periods: 2 }
 
 export interface LabPlan {
   /** How many groups the class is split into. */
@@ -18,11 +18,13 @@ export function labItems(cls: ClassSection, subjectById: Map<Id, Subject>): Curr
   return cls.curriculum.filter((i) => (i.labSessions ?? 0) > 0 && subjectById.get(i.subjectId)?.lab)
 }
 
-/** Groups needed so no lab holds more students than it fits. */
+/** Lab sections the class is split into. */
 export function labGroups(cls: ClassSection, subjectById: Map<Id, Subject>): number {
+  if (cls.labSections !== undefined) return Math.max(1, Math.round(cls.labSections))
+  // Classes saved with a student count: enough sections that no lab is over its size.
   const students = cls.students ?? 0
   if (students <= 0) return 1
-  const caps = labItems(cls, subjectById).map((i) => Math.max(1, subjectById.get(i.subjectId)!.lab!.capacity))
+  const caps = labItems(cls, subjectById).map((i) => Math.max(1, subjectById.get(i.subjectId)!.lab!.capacity ?? 25))
   return caps.length ? Math.max(1, ...caps.map((c) => Math.ceil(students / c))) : 1
 }
 
@@ -63,5 +65,5 @@ export function labTeacherPeriods(plan: LabPlan | null, subjectId: Id): number {
   return plan ? plan.blocks.filter((b) => b.some((st) => st.subjectId === subjectId)).length * plan.length : 0
 }
 
-/** "G1" for group 0. */
-export const groupName = (g: number) => `G${g + 1}`
+/** "Sec 1" for lab section 0. */
+export const groupName = (g: number) => `Sec ${g + 1}`

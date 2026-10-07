@@ -421,7 +421,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   return { grid: out, issues, score: Math.round(best), iterations: iter }
 }
 
-/** "G1 Physics, G2 Chemistry, G3 Biology", for messages and tooltips. */
+/** "Sec 1 Physics, Sec 2 Chemistry, Sec 3 Biology", for messages and tooltips. */
 export function describeStations(stations: { group: number; subjectId: Id }[], name: (id: Id) => string): string {
   return stations.map((st) => `${groupName(st.group)} ${name(st.subjectId)}`).join(', ')
 }

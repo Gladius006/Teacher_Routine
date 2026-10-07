@@ -32,13 +32,13 @@ export function importSchool(text: string): SchoolData {
 
   if (!Array.isArray(d.subjects) || !d.subjects.every((x) => x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStr(x.color) &&
     (x.grades === undefined || (Array.isArray(x.grades) && x.grades.every(isNum))) && (x.periods === undefined || isNum(x.periods)) && (x.endOfDay === undefined || isNum(x.endOfDay)) &&
-    (x.lab === undefined || (!!x.lab && isNum(x.lab.rooms) && isNum(x.lab.capacity) && isNum(x.lab.periods)))))
+    (x.lab === undefined || (!!x.lab && isNum(x.lab.rooms) && (x.lab.capacity === undefined || isNum(x.lab.capacity)) && isNum(x.lab.periods)))))
     throw bad('subjects')
   if (!Array.isArray(d.teachers) || !d.teachers.every((x) =>
     x && isStr(x.id) && isStr(x.name) && isStr(x.code) && isStrArr(x.primary) && isStrArr(x.secondary) && (x.junior === undefined || isStrArr(x.junior)) && isNum(x.maxPerDay) && isNum(x.maxPerWeek)))
     throw bad('teachers')
   if (!Array.isArray(d.classes) || !d.classes.every((x) =>
-    x && isStr(x.id) && isNum(x.grade) && isStr(x.section) && Array.isArray(x.curriculum) && (x.students === undefined || isNum(x.students)) &&
+    x && isStr(x.id) && isNum(x.grade) && isStr(x.section) && Array.isArray(x.curriculum) && (x.students === undefined || isNum(x.students)) && (x.labSections === undefined || isNum(x.labSections)) &&
     x.curriculum.every((c) => c && isStr(c.subjectId) && isNum(c.periods) && (c.labSessions === undefined || isNum(c.labSessions)))))
     throw bad('classes')
 

@@ -32,8 +32,8 @@ export interface Subject {
 export interface LabInfo {
   /** How many lab rooms the school has for this subject. */
   rooms: number
-  /** Students that fit in one lab; a bigger class is split into groups. */
-  capacity: number
+  /** No longer asked for: only read to work out lab sections for classes saved with a student count. */
+  capacity?: number
   /** Length of one lab session, in periods. */
   periods: number
 }
@@ -66,7 +66,9 @@ export interface ClassSection {
   grade: number
   section: string
   curriculum: CurriculumItem[]
-  /** Number of students, used to split the class into lab groups. Missing = one group. */
+  /** How many sections the class is split into for labs; they rotate through the labs together. Missing = 1. */
+  labSections?: number
+  /** Old: student count, from before lab sections could be entered directly. */
   students?: number
 }
 

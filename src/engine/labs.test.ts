@@ -11,26 +11,29 @@ import type { ClassSection, SchoolData, Subject } from './types'
 import { exportSchool, importSchool } from '../store/io'
 
 const sub = (id: string, lab?: Subject['lab']): Subject => ({ id, name: id, code: id, color: '#888', lab })
-const LAB = { rooms: 1, capacity: 25, periods: 2 }
+const LAB = { rooms: 1, periods: 2 }
 const byId = (subjects: Subject[]) => new Map(subjects.map((s) => [s.id, s]))
-const science = (students: number, sessions: Record<string, number>): ClassSection => ({
-  id: 'c', grade: 11, section: 'Sci', students,
+const science = (labSections: number, sessions: Record<string, number>): ClassSection => ({
+  id: 'c', grade: 11, section: 'Sci', labSections,
   curriculum: Object.entries(sessions).map(([subjectId, labSessions]) => ({ subjectId, periods: 4, labSessions })),
 })
 
 describe('lab plan', () => {
   const subjects = [sub('phy', LAB), sub('che', LAB), sub('bio', LAB), sub('eng')]
 
-  it('splits a class into groups that fit the smallest lab', () => {
-    expect(labGroups(science(100, { phy: 1 }), byId(subjects))).toBe(4)
-    expect(labGroups(science(101, { phy: 1 }), byId(subjects))).toBe(5)
-    expect(labGroups({ ...science(100, { phy: 1 }), students: undefined }, byId(subjects))).toBe(1)
-    const small = [sub('phy', { ...LAB, capacity: 20 }), sub('che', LAB)]
-    expect(labGroups(science(100, { phy: 1, che: 1 }), byId(small))).toBe(5)
+  it('uses the lab sections entered for the class', () => {
+    expect(labGroups(science(4, { phy: 1 }), byId(subjects))).toBe(4)
+    expect(labGroups({ ...science(4, { phy: 1 }), labSections: undefined }, byId(subjects))).toBe(1)
+  })
+
+  it('works out lab sections for classes saved with a student count', () => {
+    const old = { ...science(4, { phy: 1 }), labSections: undefined, students: 100 }
+    expect(labGroups(old, byId(subjects))).toBe(4)
+    expect(labGroups(old, byId([sub('phy', { ...LAB, capacity: 20 })]))).toBe(5)
   })
 
   it('rotates 4 groups through 3 labs in 4 blocks, every group visiting every lab once', () => {
-    const plan = labPlan(science(100, { phy: 1, che: 1, bio: 1 }), byId(subjects))!
+    const plan = labPlan(science(4, { phy: 1, che: 1, bio: 1 }), byId(subjects))!
     expect(plan.groups).toBe(4)
     expect(plan.length).toBe(2)
     expect(plan.blocks).toHaveLength(4)
@@ -46,32 +49,32 @@ describe('lab plan', () => {
   })
 
   it('runs a second round for a subject with two sessions a week', () => {
-    const plan = labPlan(science(100, { phy: 2, che: 1 }), byId(subjects))!
+    const plan = labPlan(science(4, { phy: 2, che: 1 }), byId(subjects))!
     const phy = plan.blocks.flat().filter((st) => st.subjectId === 'phy')
     expect(phy).toHaveLength(8) // 4 groups x 2 sessions
     for (let g = 0; g < 4; g++) expect(phy.filter((st) => st.group === g)).toHaveLength(2)
   })
 
-  it('a class without students goes to the labs as one group', () => {
-    const plan = labPlan({ ...science(0, { phy: 1, che: 1 }) }, byId(subjects))!
+  it('a class with one lab section goes to the labs together', () => {
+    const plan = labPlan(science(1, { phy: 1, che: 1 }), byId(subjects))!
     expect(plan.groups).toBe(1)
     expect(plan.blocks).toHaveLength(2)
     expect(plan.blocks.every((b) => b.length === 1)).toBe(true)
   })
 
   it('ignores subjects without a lab, and classes without lab sessions', () => {
-    expect(labPlan(science(100, { eng: 1 }), byId(subjects))).toBeNull()
-    expect(labPlan(science(100, { phy: 0 }), byId(subjects))).toBeNull()
+    expect(labPlan(science(4, { eng: 1 }), byId(subjects))).toBeNull()
+    expect(labPlan(science(4, { phy: 0 }), byId(subjects))).toBeNull()
   })
 })
 
-/** The sample school with Physics, Chemistry and Biology labs for classes 11 and 12 (100 students each). */
+/** The sample school with Physics, Chemistry and Biology labs for classes 11 and 12 (4 lab sections each). */
 function labSchool(rooms = 1): SchoolData {
   const data = sampleSchool()
   for (const id of ['s-phy', 's-chem', 's-bio']) data.subjects.find((s) => s.id === id)!.lab = { ...LAB, rooms }
   for (const cls of data.classes) {
     if (cls.grade < 11) continue
-    cls.students = 100
+    cls.labSections = 4
     // Make room in the week for 4 two-period practical blocks.
     cls.curriculum = cls.curriculum.map((i) => ({
       ...i,
@@ -154,7 +157,7 @@ describe('lab blocks in the routine', () => {
     const back = importSchool(exportSchool(labSchool()))
     expect(back.subjects.find((s) => s.id === 's-phy')?.lab).toEqual(LAB)
     const c = back.classes.find((x) => x.grade === 12)!
-    expect(c.students).toBe(100)
+    expect(c.labSections).toBe(4)
     expect(c.curriculum.find((i) => i.subjectId === 's-phy')?.labSessions).toBe(1)
   })
 })

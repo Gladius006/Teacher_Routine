@@ -4,6 +4,7 @@ import { CLOUD_ENABLED } from '../cloud/client'
 import { syncSubjectClasses } from '../engine/grades'
 import { emptySchool } from '../engine/sample'
 import { nextSection } from '../engine/sections'
+import { labGroups } from '../engine/labs'
 import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
 
 export type ThemePref = 'system' | 'light' | 'dark'
@@ -91,8 +92,8 @@ export const useStore = create<State>()(
         const id = uid('c')
         // Pins are per section, so they are not copied.
         const curriculum = from ? from.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, ...(labSessions !== undefined ? { labSessions } : {}) })) : []
-        const students = from?.students
-        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum, ...(students ? { students } : {}) }] } }))
+        const labSections = from ? labGroups(from, new Map(get().data.subjects.map((x) => [x.id, x]))) : 1
+        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum, ...(labSections > 1 ? { labSections } : {}) }] } }))
         return id
       },
       copyCurriculum: (fromId, toIds) =>
