@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ChalkboardTeacher, MagnifyingGlass, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Shell, Stepper, Swatch, ToggleChip } from '../../components/ui'
 import { slotsPerWeek } from '../../engine/blocks'
-import { cellTeachers } from '../../engine/evaluate'
 import type { Subject, Teacher } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -23,7 +22,7 @@ export function TeachersPage() {
   const weekly = useMemo(() => {
     const m = new Map<string, number>()
     if (!routine) return m
-    for (const cells of Object.values(routine.grid)) for (const c of cells) if (c) for (const { teacherId } of cellTeachers(c)) m.set(teacherId, (m.get(teacherId) ?? 0) + 1)
+    for (const cells of Object.values(routine.grid)) for (const c of cells) if (c) m.set(c.teacherId, (m.get(c.teacherId) ?? 0) + 1)
     return m
   }, [routine])
 

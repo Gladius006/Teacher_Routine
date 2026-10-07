@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChartBar } from '@phosphor-icons/react'
 import { Button, EmptyState, PageHeader, Segmented, Shell, cx } from '../../components/ui'
 import { isAdjacent, restCapacityPerDay } from '../../engine/blocks'
-import { continues, teacherSlots } from '../../engine/evaluate'
+import { teacherSlots } from '../../engine/evaluate'
 import { useStore } from '../../store/store'
 
 type Sort = 'load' | 'rest' | 'name'
@@ -37,7 +37,7 @@ export function WorkloadPage() {
       const days = Array.from({ length: D }, (_, d) => week.slice(d * P, d * P + P).reduce((n, s) => n + s.length, 0))
       let backToBack = 0
       for (let s = 0; s < week.length; s++) {
-        if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length && !(week[s + 1].length === 1 && continues(week[s]))) backToBack++
+        if (week[s].length && isAdjacent(settings, s % P, Math.floor(s / P)) && week[s + 1]?.length) backToBack++
       }
       return { id: t.id, name: t.name, code: t.code, days, total: days.reduce((a, b) => a + b, 0), maxPerWeek: t.maxPerWeek, backToBack }
     })

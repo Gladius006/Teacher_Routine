@@ -2,7 +2,6 @@ import { assignTeachers, className } from './assign'
 import { slotsPerWeek } from './blocks'
 import { evaluate } from './evaluate'
 import { formatGrades, isOffered } from './grades'
-import { labPeriods, labPlan } from './labs'
 import { mulberry32 } from './rng'
 import { placeLessons, type PlaceOptions } from './place'
 import type { Issue, Routine, SchoolData } from './types'
@@ -22,14 +21,12 @@ export function hashInputs(data: SchoolData): string {
 export function precheck(data: SchoolData): Issue[] {
   const issues: Issue[] = []
   const S = slotsPerWeek(data.settings)
-  const subjectById = new Map(data.subjects.map((s) => [s.id, s]))
   for (const cls of data.classes) {
-    const labs = labPeriods(labPlan(cls, subjectById))
-    const need = cls.curriculum.reduce((n, c) => n + Math.max(0, c.periods), 0) + labs
+    const need = cls.curriculum.reduce((n, c) => n + Math.max(0, c.periods), 0)
     if (need > S) {
       issues.push({
         kind: 'overCapacity', severity: 'error', classId: cls.id,
-        message: `Class ${className(cls)} needs ${need} periods${labs ? ` (${labs} of them in labs)` : ''} but the week only has ${S}. Remove ${need - S} from its subjects or lab sessions.`,
+        message: `Class ${className(cls)} needs ${need} periods but the week only has ${S}. Remove ${need - S} from its subjects.`,
       })
     }
   }

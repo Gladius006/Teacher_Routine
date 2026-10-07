@@ -67,13 +67,6 @@ Teacher
 - [ ] A new class starts with the last section of its grade's subjects and periods, or, if it is the grade's first, with every subject taught in that grade. Any can be removed.
 - [ ] "Add Section" on a grade creates the next section in one click (B after A, "Commerce B" after "Commerce A", otherwise the first free letter) with the same subjects, and puts its name straight into an editable field.
 - [ ] Two sections of a grade can't share a name (ignoring case and extra spaces).
-
-**R4a. Labs and practicals (classes 11 and 12).** A subject can have labs: how many lab rooms the school has for it, and how long a session is (in periods). A class in 11 or 12 has a number of lab sections (default 1), and each lab subject in it has "lab sessions a week, per section" (default 1).
-- [ ] The class is split into the lab sections entered (e.g. 4); with 1 section the whole class goes together. Sections are shown as Sec 1, Sec 2…
-- [ ] Groups rotate together: in each practical session every lab takes a different group, and over a round every group visits every lab once. 4 groups and 3 labs (Physics, Chemistry, Biology) give 4 sessions a week, with one group off in each. The class form shows this rotation table.
-- [ ] Each lab is taken by the class's teacher for that subject. A session is one block of N periods in a row on one day, never split by lunch, and its periods don't count as back to back for the teacher.
-- [ ] A lab is never used by more groups at once than the school has rooms for it (e.g. 11 and 12 share one Physics lab); if it can't be avoided, it is reported.
-- [ ] Lab periods count towards the class's week and the teacher's load. The routine shows a practical session as one cell across its periods listing each group's lab; teachers see "Class 11 Sci G2, Physics lab"; a Labs view shows each lab's week. Print and Excel show the same.
 - [ ] The editor shows "used X of Y slots" and warns when X exceeds Y (days × periods per day).
 - [ ] Copying a class's curriculum to other sections of the same grade takes one action.
 

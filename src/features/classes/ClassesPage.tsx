@@ -5,7 +5,6 @@ import { canTake, className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
-import { LAB_GRADES, groupName, labGroups, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
 import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -67,9 +66,7 @@ export function ClassesPage() {
                 {list.map((c) => {
                   const misplaced = c.curriculum.filter((i) => !isOffered(subjectById.get(i.subjectId), c.grade))
                   const valid = c.curriculum.filter((i) => isOffered(subjectById.get(i.subjectId), c.grade))
-                  const plan = labPlan({ ...c, curriculum: valid }, subjectById)
-                  const labs = labPeriods(plan)
-                  const used = valid.reduce((n, i) => n + i.periods, 0) + labs
+                  const used = valid.reduce((n, i) => n + i.periods, 0)
                   const over = used > slots
                   return (
                     <li key={c.id}>
@@ -92,12 +89,7 @@ export function ClassesPage() {
                               <IconButton label={`Delete ${className(c)}`} className="hover:text-danger" onClick={() => setDeleting(c)}><Trash weight="light" /></IconButton>
                             </div>
                           </div>
-                          <CompositionBar items={valid} slots={slots} byId={subjectById} labs={labs} />
-                          {plan && (
-                            <p className="mt-2 text-[13px] text-ink-2">
-                              Labs: {plan.groups} {plan.groups === 1 ? 'section' : 'sections'}, {plan.blocks.length} practical {plan.blocks.length === 1 ? 'session' : 'sessions'} of {plan.length} {plan.length === 1 ? 'period' : 'periods'}
-                            </p>
-                          )}
+                          <CompositionBar items={valid} slots={slots} byId={subjectById} />
                           {over && <p className="mt-2 text-[13px] text-danger">{used - slots} more than the week has. Remove some periods.</p>}
                           {misplaced.length > 0 && (
                             <p className="mt-2 text-[13px] leading-snug text-warn">
@@ -200,15 +192,14 @@ function SectionNameEditor({ cls, onDone }: { cls: ClassSection; onDone: () => v
 }
 
 /** Proportional bar of the week, one segment per subject, in its color. */
-function CompositionBar({ items, slots, byId, labs = 0 }: { items: CurriculumItem[]; slots: number; byId: Map<string, Subject>; labs?: number }) {
-  const used = items.reduce((n, i) => n + i.periods, 0) + labs
+function CompositionBar({ items, slots, byId }: { items: CurriculumItem[]; slots: number; byId: Map<string, Subject> }) {
+  const used = items.reduce((n, i) => n + i.periods, 0)
   const total = Math.max(slots, used)
   return (
     <div className="mt-4 flex h-2 gap-px overflow-hidden rounded-full" role="img" aria-label={`${used} of ${slots} periods planned`}>
       {items.map((i) => (
         <span key={i.subjectId} className="h-full first:rounded-l-full" style={{ width: `${(i.periods / total) * 100}%`, background: byId.get(i.subjectId)?.color ?? 'var(--ink-3)' }} />
       ))}
-      {labs > 0 && <span className="h-full bg-[repeating-linear-gradient(135deg,var(--ink-3)_0_2px,transparent_2px_5px)]" style={{ width: `${(labs / total) * 100}%` }} />}
       {used < slots && <span className="h-full flex-1 rounded-r-full bg-shell" />}
     </div>
   )
@@ -233,25 +224,16 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const lastOf = (g: number) => [...classes].filter((c) => c.grade === g).sort((a, b) => a.section.localeCompare(b.section)).at(-1)
   const startFor = (g: number): CurriculumItem[] => {
     const sib = lastOf(g)
-    return sib
-      ? sib.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, pinnedTeacherId: null, ...(labSessions !== undefined ? { labSessions } : {}) }))
-      : curriculumFor(subjects, g)
+    return sib ? sib.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods, pinnedTeacherId: null })) : curriculumFor(subjects, g)
   }
   const [items, setItems] = useState<CurriculumItem[]>(cls?.curriculum ?? startFor(9))
-  const sectionsOf = (c: ClassSection | undefined) => (c ? labGroups(c, new Map(subjects.map((s) => [s.id, s]))) : 1)
-  const [labSections, setLabSections] = useState(sectionsOf(cls ?? lastOf(9)))
   const [removedIds, setRemovedIds] = useState<string[]>([])
   const [tried, setTried] = useState(false)
   const slots = slotsPerWeek(settings)
   const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const offered = (id: string) => isOffered(subjectById.get(id), grade)
-  const labsOn = LAB_GRADES.includes(grade)
-  const hasLab = (id: string) => labsOn && !!subjectById.get(id)?.lab
-  const plan = labsOn ? labPlan({ id: '', grade, section: '', labSections, curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById) : null
-  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan)
+  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0)
   const junior = grade <= settings.juniorMaxGrade
-  /** A subject going into this class: one lab session a week if it has labs. */
-  const newItem = (subjectId: string, periods: number): CurriculumItem => ({ subjectId, periods, pinnedTeacherId: null, ...(hasLab(subjectId) ? { labSessions: 1 } : {}) })
 
   const sectionError = nameTaken(section, grade, classes.filter((c) => c.id !== cls?.id))
   const preview = className({ id: '', grade, section: cleanSection(section), curriculum: [] })
@@ -262,7 +244,6 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
     // For a new class, follow the grade, leaving out any subject removed by hand.
     setItems(startFor(g).filter((i) => !removedIds.includes(i.subjectId)))
     if (!sectionTouched) setSection(nextSection(classes.filter((c) => c.grade === g)))
-    if (lastOf(g)) setLabSections(sectionsOf(lastOf(g)))
   }
   const removeItem = (idx: number) => {
     setRemovedIds((r) => [...r, items[idx].subjectId])
@@ -280,11 +261,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
       document.getElementById('class-section')?.focus()
       return
     }
-    // Lab settings only apply to classes 11 and 12.
-    const curriculum = items
-      .map(({ labSessions, ...i }) => (labsOn && labSessions !== undefined ? { ...i, labSessions } : i))
-      .filter((i) => i.periods > 0 || ((i as CurriculumItem).labSessions ?? 0) > 0)
-    upsertClass({ id: cls?.id ?? uid('c'), grade, section: cleanSection(section), curriculum, ...(labsOn ? { labSections } : {}) })
+    upsertClass({ id: cls?.id ?? uid('c'), grade, section: cleanSection(section), curriculum: items.filter((i) => i.periods > 0) })
     onDone()
   }
 
@@ -317,16 +294,6 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
         </div>
       </div>
 
-      {labsOn && (
-        <Field
-          label="Lab sections"
-          htmlFor="class-lab-sections"
-          hint={labSections > 1 ? 'The class is split into this many sections for labs. They rotate through the labs together.' : 'The whole class goes to the lab together.'}
-        >
-          <Stepper id="class-lab-sections" label="lab sections" value={labSections} min={1} max={10} onChange={setLabSections} />
-        </Field>
-      )}
-
       <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-sm font-medium">Subjects and periods per week</h3>
@@ -350,7 +317,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
               const sorted = [...eligible].sort((a, b) => rank(tierOf(a, item.subjectId)) - rank(tierOf(b, item.subjectId)) || a.name.localeCompare(b.name))
               return (
                 <li key={idx} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-core bg-shell/60 p-2 sm:grid-cols-[minmax(0,1.3fr)_auto_minmax(0,1.3fr)_auto]">
-                  <Select aria-label="Subject" value={item.subjectId} onChange={(e) => update(idx, { subjectId: e.target.value, pinnedTeacherId: null, labSessions: hasLab(e.target.value) ? 1 : undefined })}>
+                  <Select aria-label="Subject" value={item.subjectId} onChange={(e) => update(idx, { subjectId: e.target.value, pinnedTeacherId: null })}>
                     {subjects.filter((s) => s.id === item.subjectId || (isOffered(s, grade) && !items.some((i) => i.subjectId === s.id))).map((s) => (
                       <option key={s.id} value={s.id}>{s.name}{isOffered(s, grade) ? '' : ` (not taught in class ${grade})`}</option>
                     ))}
@@ -366,15 +333,6 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
                   <IconButton label={`Remove ${subjectById.get(item.subjectId)?.name ?? 'subject'}`} className="col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto" onClick={() => removeItem(idx)}>
                     <X weight="light" />
                   </IconButton>
-                  {hasLab(item.subjectId) && (
-                    <div className="col-span-full flex flex-wrap items-center gap-3 px-2 pb-1 text-[13px] text-ink-2">
-                      <label htmlFor={`lab-${idx}`}>Lab sessions a week, per section</label>
-                      <Stepper id={`lab-${idx}`} label={`${subjectById.get(item.subjectId)?.name ?? 'subject'} lab sessions a week`} value={item.labSessions ?? 0} min={0} max={5} onChange={(n) => update(idx, { labSessions: n })} />
-                      <span className="text-ink-3">
-                        {subjectById.get(item.subjectId)!.lab!.periods} {subjectById.get(item.subjectId)!.lab!.periods === 1 ? 'period' : 'periods'} each, with the subject teacher
-                      </span>
-                    </div>
-                  )}
                   {!offered(item.subjectId) && (
                     <p className="col-span-full px-2 pb-1 text-[13px] leading-snug text-warn">
                       {subjectById.get(item.subjectId)?.name} is only taught in classes {formatGrades(subjectById.get(item.subjectId)?.grades ?? [])}, so it will be left out. Remove it, or change its classes on the Subjects page.
@@ -390,7 +348,7 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
           className="mt-3"
           icon={<Plus weight="bold" />}
           disabled={unused.length === 0}
-          onClick={() => setItems((xs) => [...xs, newItem(unused[0].id, 4)])}
+          onClick={() => setItems((xs) => [...xs, { subjectId: unused[0].id, periods: 4, pinnedTeacherId: null }])}
         >
           Add Subject
         </Button>
@@ -399,55 +357,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
         )}
       </div>
 
-      {plan && <LabRotation plan={plan} byId={subjectById} />}
-
       <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onDone}>Cancel</Button>
         <Button variant="primary" type="submit">{cls ? 'Save Changes' : 'Add Class'}</Button>
       </div>
     </form>
-  )
-}
-
-/** How the class's groups move through the labs: one row per practical session. */
-function LabRotation({ plan, byId }: { plan: LabPlan; byId: Map<string, Subject> }) {
-  const groups = Array.from({ length: plan.groups }, (_, g) => g)
-  const per = `${plan.length} ${plan.length === 1 ? 'period' : 'periods'}`
-  return (
-    <section aria-labelledby="lab-rotation">
-      <h3 id="lab-rotation" className="text-sm font-medium">Lab rotation</h3>
-      <p className="mt-1 text-[13px] text-ink-3">
-        {plan.groups === 1
-          ? `The whole class goes to the labs together: ${plan.blocks.length} ${plan.blocks.length === 1 ? 'session' : 'sessions'} of ${per} a week.`
-          : `${plan.groups} lab sections take turns in the labs: ${plan.blocks.length} sessions of ${per} a week, all sections at the same time. The routine picks the days.`}
-      </p>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[22rem] border-separate border-spacing-1 text-left text-[13px]">
-          <thead>
-            <tr>
-              <th scope="col" className="w-24 font-medium text-ink-3"><span className="sr-only">Session</span></th>
-              {groups.map((g) => <th key={g} scope="col" className="text-center font-mono font-medium text-ink-3">{groupName(g)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {plan.blocks.map((block, b) => (
-              <tr key={b}>
-                <th scope="row" className="font-medium text-ink-2">Session {b + 1}</th>
-                {groups.map((g) => {
-                  const st = block.find((x) => x.group === g)
-                  const s = st && byId.get(st.subjectId)
-                  return (
-                    <td key={g} className={cx('rounded-lg px-2 py-1.5 text-center', s ? 'bg-shell font-medium' : 'text-ink-3')}>
-                      {s ? <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-full" style={{ background: s.color }} />{s.name}</span> : 'Off'}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   )
 }
 

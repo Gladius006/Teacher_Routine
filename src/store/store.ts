@@ -4,7 +4,6 @@ import { CLOUD_ENABLED } from '../cloud/client'
 import { syncSubjectClasses } from '../engine/grades'
 import { emptySchool } from '../engine/sample'
 import { nextSection } from '../engine/sections'
-import { labGroups } from '../engine/labs'
 import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
 
 export type ThemePref = 'system' | 'light' | 'dark'
@@ -31,6 +30,10 @@ interface State {
   /** Replaces everything with a school loaded from the cloud. */
   loadCloud: (data: SchoolData, routine: Routine | null, started: boolean) => void
 }
+
+/** A saved routine this version can show. Routines built with the removed lab feature have periods with no subject. */
+export const usableRoutine = (r: Routine | null | undefined): Routine | null =>
+  r && Object.values(r.grid ?? {}).every((cells) => cells.every((c) => !c || !!c.subjectId)) ? r : null
 
 const upsert = <T extends { id: Id }>(list: T[], item: T) =>
   list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]
@@ -91,9 +94,8 @@ export const useStore = create<State>()(
         const from = [...siblings].sort((a, b) => a.section.localeCompare(b.section)).at(-1)
         const id = uid('c')
         // Pins are per section, so they are not copied.
-        const curriculum = from ? from.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, ...(labSessions !== undefined ? { labSessions } : {}) })) : []
-        const labSections = from ? labGroups(from, new Map(get().data.subjects.map((x) => [x.id, x]))) : 1
-        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum, ...(labSections > 1 ? { labSections } : {}) }] } }))
+        const curriculum = from ? from.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods })) : []
+        set((s) => ({ data: { ...s.data, classes: [...s.data.classes, { id, grade, section: nextSection(siblings), curriculum }] } }))
         return id
       },
       copyCurriculum: (fromId, toIds) =>
@@ -101,7 +103,7 @@ export const useStore = create<State>()(
           const from = s.data.classes.find((c) => c.id === fromId)
           if (!from) return s
           // Pins are per section, so they are not copied.
-          const curriculum = from.curriculum.map(({ subjectId, periods, labSessions }) => ({ subjectId, periods, ...(labSessions !== undefined ? { labSessions } : {}) }))
+          const curriculum = from.curriculum.map(({ subjectId, periods }) => ({ subjectId, periods }))
           return {
             data: { ...s.data, classes: s.data.classes.map((c) => (toIds.includes(c.id) ? { ...c, curriculum } : c)) },
           }
@@ -110,12 +112,19 @@ export const useStore = create<State>()(
       replaceData: (data) => set({ data, routine: null, started: true }),
       setRoutine: (routine) => set({ routine, started: true }),
       setTheme: (theme) => set({ theme }),
-      loadCloud: (data, routine, started) => set({ data, routine, started }),
+      loadCloud: (data, routine, started) => set({ data, routine: usableRoutine(routine), started }),
     }),
     CLOUD_ENABLED
       ? // Signed-in mode: school data lives in the database and is never left in this browser.
         { name: 'routine-builder-prefs', version: 1, partialize: (s) => ({ theme: s.theme }) }
-      : { name: 'routine-builder', version: 1 },
+      : {
+          name: 'routine-builder',
+          version: 1,
+          merge: (saved, current) => {
+            const s = (saved ?? {}) as Partial<State>
+            return { ...current, ...s, routine: usableRoutine(s.routine) }
+          },
+        },
   ),
 )
 

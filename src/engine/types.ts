@@ -25,17 +25,6 @@ export interface Subject {
   periods?: number
   /** Only in the last N periods of each day, e.g. 2 for Physical Ed. Missing or 0 = any time. */
   endOfDay?: number
-  /** Set when the subject has labs (or practical rooms). */
-  lab?: LabInfo
-}
-
-export interface LabInfo {
-  /** How many lab rooms the school has for this subject. */
-  rooms: number
-  /** No longer asked for: only read to work out lab sections for classes saved with a student count. */
-  capacity?: number
-  /** Length of one lab session, in periods. */
-  periods: number
 }
 
 export interface Teacher {
@@ -57,8 +46,6 @@ export interface CurriculumItem {
   subjectId: Id
   periods: number
   pinnedTeacherId?: Id | null
-  /** Lab sessions each group gets in a week, for a subject with labs. Missing or 0 = no lab. */
-  labSessions?: number
 }
 
 export interface ClassSection {
@@ -66,10 +53,6 @@ export interface ClassSection {
   grade: number
   section: string
   curriculum: CurriculumItem[]
-  /** How many sections the class is split into for labs; they rotate through the labs together. Missing = 1. */
-  labSections?: number
-  /** Old: student count, from before lab sections could be entered directly. */
-  students?: number
 }
 
 export interface SchoolData {
@@ -91,29 +74,8 @@ export interface Assignment {
 }
 
 export interface Cell {
-  /** Empty for a practical block period; see `lab`. */
   subjectId: Id
   teacherId: Id
-  /** Set when this period is part of a practical block, where the class's groups are spread over the labs. */
-  lab?: LabCell
-}
-
-export interface LabStation {
-  /** 0-based group number. */
-  group: number
-  subjectId: Id
-  teacherId: Id
-}
-
-export interface LabCell {
-  /** Block number within the class, so the periods of one block can be drawn together. */
-  block: number
-  /** Which period of the block this is (0-based) and how long the block is. */
-  part: number
-  length: number
-  groups: number
-  /** One group in each lab; groups not listed are off this block. */
-  stations: LabStation[]
 }
 
 /** Per class: cells indexed by day * periodsPerDay + period. null = free period. */
@@ -132,7 +94,6 @@ export type IssueKind =
   | 'pinInvalid'
   | 'notOffered'
   | 'notAtEnd'
-  | 'labClash'
 
 export type Severity = 'error' | 'warning' | 'info'
 

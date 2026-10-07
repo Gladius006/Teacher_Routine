@@ -3,9 +3,8 @@ import { BookOpenText, Check, PencilSimple, Plus, Trash } from '@phosphor-icons/
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
-import { DEFAULT_LAB } from '../../engine/labs'
 import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
-import type { LabInfo, Subject } from '../../engine/types'
+import type { Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
 /** Subject colors in rainbow order, as shown in the picker. */
@@ -76,7 +75,6 @@ export function SubjectsPage() {
                       <p className="mt-0.5 text-sm text-ink-2">
                         {s.grades ? (s.grades.length ? `Classes ${formatGrades(s.grades)}` : 'No classes') : 'All classes'}
                         {s.endOfDay ? <span className="text-ink-3">, end of day</span> : null}
-                        {s.lab ? <span className="text-ink-3">, {s.lab.rooms} {s.lab.rooms === 1 ? 'lab' : 'labs'}</span> : null}
                       </p>
                       <p className="text-[13px] text-ink-3">
                         {u.teachers} {u.teachers === 1 ? 'teacher' : 'teachers'}, {u.classes} {u.classes === 1 ? 'class' : 'classes'}
@@ -135,8 +133,6 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
   const periodsPerDay = useStore((s) => s.data.settings.periodsPerDay)
   // 0 = any time; otherwise only in the last N periods of each day.
   const [endOfDay, setEndOfDay] = useState(subject?.endOfDay ?? 0)
-  const [lab, setLab] = useState<LabInfo | null>(subject?.lab ?? null)
-  const setLabField = (patch: Partial<LabInfo>) => setLab((l) => (l ? { ...l, ...patch } : l))
   const [tried, setTried] = useState(false)
   const slots = useStore((s) => slotsPerWeek(s.data.settings))
 
@@ -164,7 +160,7 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
       document.getElementById(nameError ? 'subj-name' : codeError ? 'subj-code' : 'subj-grades')?.focus()
       return
     }
-    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods, ...(endOfDay > 0 ? { endOfDay } : {}), ...(lab ? { lab } : {}) })
+    upsertSubject({ id: subject?.id ?? uid('s'), name: name.trim(), code: finalCode, color, grades, periods, ...(endOfDay > 0 ? { endOfDay } : {}) })
     onDone()
   }
 
@@ -233,30 +229,6 @@ function SubjectForm({ subject, onDone }: { subject: Subject | null; onDone: () 
             <label htmlFor="subj-end">Only in the last</label>
             <Stepper id="subj-end" label="last periods of the day" value={endOfDay} min={1} max={Math.max(1, periodsPerDay - 1)} onChange={setEndOfDay} />
             <span>{endOfDay === 1 ? 'period' : 'periods'} of the day</span>
-          </div>
-        )}
-      </fieldset>
-      <fieldset>
-        <legend className="text-sm font-medium">Lab or practical</legend>
-        <p className="mt-1 text-[13px] text-ink-3">
-          For classes 11 and 12. A class can be split into lab sections that take turns in the labs, each with the subject teacher.
-        </p>
-        <div className="mt-3">
-          <Segmented
-            label="Lab or practical"
-            value={lab ? 'lab' : 'none'}
-            options={[{ value: 'none', label: 'No lab' }, { value: 'lab', label: 'Has a lab' }]}
-            onChange={(v) => setLab(v === 'lab' ? (lab ?? { ...DEFAULT_LAB, periods: Math.min(DEFAULT_LAB.periods, periodsPerDay) }) : null)}
-          />
-        </div>
-        {lab && (
-          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Number of labs" htmlFor="lab-rooms" hint="Rooms the school has for it.">
-              <Stepper id="lab-rooms" label="number of labs" value={lab.rooms} min={1} max={10} onChange={(n) => setLabField({ rooms: n })} />
-            </Field>
-            <Field label="Session length" htmlFor="lab-len" hint={lab.periods === 1 ? 'One period.' : `${lab.periods} periods in a row.`}>
-              <Stepper id="lab-len" label="lab session length in periods" value={lab.periods} min={1} max={Math.max(1, periodsPerDay)} onChange={(n) => setLabField({ periods: n })} />
-            </Field>
           </div>
         )}
       </fieldset>

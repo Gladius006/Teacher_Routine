@@ -13,11 +13,6 @@ export interface GridCell {
   /** Teacher has no rest before or after this period. */
   noRest?: boolean
   clash?: boolean
-  /** Periods this cell spans (a lab session); the periods it covers are marked `covered`. */
-  span?: number
-  covered?: boolean
-  /** Draw as a practical block. */
-  lab?: boolean
 }
 
 /**
@@ -55,11 +50,10 @@ export function RoutineGrid({ settings, cells, highlight, caption }: {
               {cols.map((p) => {
                 const cell = cells[d * P + p]
                 const closed = p >= periodsOn(settings, d)
-                const hl = highlight?.day === d && highlight?.period !== undefined && highlight.period >= p && highlight.period < p + (cell?.span ?? 1)
-                if (cell?.covered) return <FragmentWithLunch key={p} lunchAfter={lunch === p + 1} lunchRow={d === 0} rows={settings.dayNames.length}>{null}</FragmentWithLunch>
+                const hl = highlight?.day === d && highlight?.period === p
                 return (
                   <FragmentWithLunch key={p} lunchAfter={lunch === p + 1} lunchRow={d === 0} rows={settings.dayNames.length}>
-                    <td className="p-0 align-top" colSpan={cell?.span}>
+                    <td className="p-0 align-top">
                       {closed ? (
                         <div className="flex h-[4.25rem] items-center justify-center rounded-[10px] bg-[repeating-linear-gradient(135deg,var(--line-strong)_0_1px,transparent_1px_9px)] text-xs text-ink-3">
                           <span className="sr-only">No period, school ends early</span>
@@ -69,13 +63,13 @@ export function RoutineGrid({ settings, cells, highlight, caption }: {
                           title={cell.label}
                           className={cx(
                             'relative flex h-[4.25rem] min-w-0 flex-col justify-center overflow-hidden rounded-[10px] py-2 pl-3 pr-2 transition-shadow duration-300',
-                            cell.clash ? 'bg-danger-soft ring-1 ring-danger/50' : cell.noRest ? 'bg-warn-soft ring-1 ring-warn/40' : cell.lab ? 'bg-accent-soft' : 'bg-shell/80',
+                            cell.clash ? 'bg-danger-soft ring-1 ring-danger/50' : cell.noRest ? 'bg-warn-soft ring-1 ring-warn/40' : 'bg-shell/80',
                             hl && 'ring-2! ring-accent! shadow-lift',
                           )}
                         >
                           <span aria-hidden className="absolute inset-y-2 left-1 w-[3px] rounded-full" style={{ background: cell.color }} />
                           <span className="truncate text-[13px] font-semibold leading-tight">{cell.title}</span>
-                          <span className={cx('mt-0.5 text-xs leading-tight text-ink-2', cell.lab ? 'line-clamp-2' : 'truncate')}>{cell.subtitle}</span>
+                          <span className="mt-0.5 truncate text-xs leading-tight text-ink-2">{cell.subtitle}</span>
                           {cell.clash && <span className="sr-only">. Clash: teacher is in two classes at once.</span>}
                           {!cell.clash && cell.noRest && <span className="sr-only">. No rest next to this period.</span>}
                         </div>
