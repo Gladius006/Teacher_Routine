@@ -79,6 +79,15 @@ Teacher
 - [ ] Lab periods count towards the class's week and the teacher's load. A lab time shows as "Lab — A: Physics, B: Chemistry, C: Biology, D: Free"; the class routine can be shown for one group; teachers see "11 Sci, Group A"; a Labs view shows each lab's week. Print and Excel show the same.
 - [ ] Lab settings saved by earlier versions of this feature are ignored.
 
+**R4b. Option lines.** For classes like XI and XII, where students choose between subjects taught at the same time (e.g. Physics / Nutrition / Economics), the Subjects page has an "Option Lines" part. A line has a name, its classes (e.g. XI Sc and XI Hu), and its subjects; each subject lists the classes whose students take it, its periods a week, and its teachers (chosen automatically, or chosen by hand with the periods each takes).
+- [ ] A line's period is at the same time in every class taking a subject in it. All the line's subjects with periods left run together; students of the others are free.
+- [ ] Students of several classes taking the same subject sit together: one lesson with one teacher, counted once in the teacher's load and never as a clash.
+- [ ] Different subjects are always separate lessons, so a teacher with two subjects in a line (e.g. Economics and Education) never has both in the same period.
+- [ ] A class's own periods for a subject it takes in a line are not scheduled again; the class form says "Taught in XI Line 1" and the period count includes the line.
+- [ ] The class routine shows a line period as "XI Line 1 — Physics (P. Sen) / Nutrition (R. Das) / Economics (S. Mandal)"; the teacher routine shows "XI Sc + XI Hu — Economics". Print and Excel show the same.
+
+**R4c. Shared subjects.** A subject in a class can be shared by two or more teachers, each with the periods they take (e.g. Physics: P. Sen 2, DD 2). The subject's periods are their total. A lab for a shared subject is taken by the first teacher.
+
 **R5. Teacher assignment rules.** Each (class, subject) pair is taught by one teacher for the whole week.
 - Senior classes: only teachers with the subject as a primary or secondary skill. Primary is preferred.
 - Junior classes: any teacher may be chosen. Preference order: primary skill, then secondary skill, then any teacher.

@@ -23,7 +23,7 @@ export function TeachersPage() {
   const weekly = useMemo(() => {
     const m = new Map<string, number>()
     if (!routine) return m
-    for (const cells of Object.values(routine.grid)) for (const c of cells) if (c) for (const { teacherId } of cellTeachers(c)) m.set(teacherId, (m.get(teacherId) ?? 0) + 1)
+    for (const [classId, cells] of Object.entries(routine.grid)) for (const c of cells) if (c) for (const { teacherId } of cellTeachers(c, classId)) m.set(teacherId, (m.get(teacherId) ?? 0) + 1)
     return m
   }, [routine])
 

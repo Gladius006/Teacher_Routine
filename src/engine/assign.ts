@@ -1,7 +1,8 @@
 import { periodsOn, restCapacityPerWeek } from './blocks'
 import { labPlan, labTeacherPeriods } from './labs'
+import { lineSubjects, validLines } from './lines'
 import type { Rng } from './rng'
-import type { Assignment, ClassSection, Id, Issue, SchoolData, Settings, SkillTier, Teacher } from './types'
+import type { Assignment, ClassSection, Id, Issue, SchoolData, Settings, SkillTier, Teacher, TeacherShare } from './types'
 
 export function isJunior(c: ClassSection, settings: Settings): boolean {
   return c.grade <= settings.juniorMaxGrade
@@ -39,11 +40,17 @@ interface Requirement {
   cls: ClassSection
   subjectId: Id
   periods: number
-  /** Theory periods plus lab periods: what this adds to the teacher's week. */
+  /** Lab periods on top: they go to the (first) teacher too. */
+  lab: number
   load: number
-  pinnedTeacherId: Id | null
+  /** Teachers chosen by hand and their periods; empty = choose one automatically. */
+  pins: TeacherShare[]
   eligible: Teacher[]
   order: number
+  /** For a subject in an option line: the line, its name, and the classes sitting in the lesson. */
+  lineId?: Id
+  lineName?: string
+  lineClassIds?: Id[]
 }
 
 /**
@@ -67,57 +74,88 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
   const issues: Issue[] = []
   const reqs: Requirement[] = []
 
+  const validShares = (shares: TeacherShare[] | undefined) =>
+    (shares ?? []).filter((s) => teacherById.has(s.teacherId) && s.periods > 0)
+
   let order = 0
+  const classById = new Map(data.classes.map((c) => [c.id, c]))
+  const plans = new Map(data.classes.map((c) => [c.id, labPlan(c, subjectById, data)]))
   for (const cls of data.classes) {
     const junior = isJunior(cls, settings)
-    const plan = labPlan(cls, subjectById)
+    const plan = plans.get(cls.id)!
+    // Subjects this class takes in an option line are taught there instead.
+    const inLines = lineSubjects(data, cls.id)
     for (const item of cls.curriculum) {
       const lab = labTeacherPeriods(plan, item.subjectId)
-      if (item.periods <= 0 && lab === 0) continue
-      const eligible = teachers.filter((t) => canTake(t, item.subjectId, junior))
+      const periods = inLines.has(item.subjectId) ? 0 : Math.max(0, item.periods)
+      if (periods <= 0 && lab === 0) continue
+      const shares = validShares(item.teachers)
+      const pins = shares.length > 0
+        ? (periods > 0 ? shares : shares.slice(0, 1).map((s) => ({ ...s, periods: 0 })))
+        : item.pinnedTeacherId && teacherById.has(item.pinnedTeacherId) ? [{ teacherId: item.pinnedTeacherId, periods }] : []
       reqs.push({
-        cls,
-        subjectId: item.subjectId,
-        periods: Math.max(0, item.periods),
-        load: Math.max(0, item.periods) + lab,
-        pinnedTeacherId: item.pinnedTeacherId && teacherById.has(item.pinnedTeacherId) ? item.pinnedTeacherId : null,
-        eligible,
+        cls, subjectId: item.subjectId, periods, lab, load: periods + lab, pins,
+        eligible: teachers.filter((t) => canTake(t, item.subjectId, junior)),
         order: order++,
       })
     }
   }
 
-  const result = new Map<number, Assignment>()
-  const label = (r: Requirement) => `Class ${className(r.cls)} ${subjectName.get(r.subjectId) ?? 'subject'}`
+  // Option line subjects: one lesson for every class taking it, with one set of teachers.
+  for (const line of validLines(data)) {
+    for (const item of line.items) {
+      const classes = item.classIds.map((id) => classById.get(id)!).filter(Boolean)
+      const lab = classes.reduce((n, c) => n + labTeacherPeriods(plans.get(c.id)!, item.subjectId), 0)
+      const junior = classes.every((c) => isJunior(c, settings))
+      reqs.push({
+        cls: classes[0], subjectId: item.subjectId, periods: item.periods, lab, load: item.periods + lab,
+        pins: validShares(item.teachers),
+        eligible: teachers.filter((t) => canTake(t, item.subjectId, junior)),
+        order: order++,
+        lineId: line.id, lineName: line.name, lineClassIds: item.classIds,
+      })
+    }
+  }
+
+  const result = new Map<number, Assignment[]>()
+  const label = (r: Requirement) => r.lineId
+    ? `${r.lineName} ${subjectName.get(r.subjectId) ?? 'subject'}`
+    : `Class ${className(r.cls)} ${subjectName.get(r.subjectId) ?? 'subject'}`
+  const lineFields = (r: Requirement) => (r.lineId ? { lineId: r.lineId, lineClassIds: r.lineClassIds } : {})
 
   // Pins first: they are fixed decisions and consume capacity before anything else.
   for (const r of reqs) {
-    if (!r.pinnedTeacherId) continue
-    const t = teacherById.get(r.pinnedTeacherId)!
-    const tier = tierOf(t, r.subjectId)
-    const newLoad = load.get(t.id)! + r.load
-    load.set(t.id, newLoad)
-    if (endOf.get(r.subjectId)) endLoad.set(t.id, endLoad.get(t.id)! + r.periods)
-    if (!canTake(t, r.subjectId, isJunior(r.cls, settings))) {
-      issues.push({
-        kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
-        message: isJunior(r.cls, settings)
-          ? `${t.name} is pinned to ${label(r)} but can't take that subject in junior classes. Add it to their junior class subjects, or remove the pin.`
-          : `${t.name} is pinned to ${label(r)} but doesn't have that subject as a skill. Add it to their extra subjects, or remove the pin.`,
-      })
-    }
-    if (newLoad > weeklyCapacity(t, settings)) {
-      issues.push({
-        kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
-        message: `Pins give ${t.name} ${newLoad} periods a week, above their limit of ${weeklyCapacity(t, settings)}. Raise their limit or remove a pin.`,
-      })
-    }
-    result.set(r.order, { classId: r.cls.id, subjectId: r.subjectId, periods: r.periods, teacherId: t.id, tier, pinned: true })
+    if (r.pins.length === 0) continue
+    const out: Assignment[] = []
+    r.pins.forEach((pin, k) => {
+      const t = teacherById.get(pin.teacherId)!
+      const tier = tierOf(t, r.subjectId)
+      // The first teacher also takes the labs.
+      const newLoad = load.get(t.id)! + pin.periods + (k === 0 ? r.lab : 0)
+      load.set(t.id, newLoad)
+      if (endOf.get(r.subjectId)) endLoad.set(t.id, endLoad.get(t.id)! + pin.periods)
+      if (!canTake(t, r.subjectId, isJunior(r.cls, settings))) {
+        issues.push({
+          kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
+          message: isJunior(r.cls, settings)
+            ? `${t.name} is pinned to ${label(r)} but can't take that subject in junior classes. Add it to their junior class subjects, or remove the pin.`
+            : `${t.name} is pinned to ${label(r)} but doesn't have that subject as a skill. Add it to their extra subjects, or remove the pin.`,
+        })
+      }
+      if (newLoad > weeklyCapacity(t, settings)) {
+        issues.push({
+          kind: 'pinInvalid', severity: 'warning', classId: r.cls.id, teacherId: t.id, subjectId: r.subjectId,
+          message: `Pins give ${t.name} ${newLoad} periods a week, above their limit of ${weeklyCapacity(t, settings)}. Raise their limit or remove a pin.`,
+        })
+      }
+      out.push({ classId: r.cls.id, subjectId: r.subjectId, periods: pin.periods, teacherId: t.id, tier, pinned: true, ...lineFields(r) })
+    })
+    result.set(r.order, out)
   }
 
   // Most constrained first: fewest eligible teachers, then the biggest chunk of periods.
   const open = reqs
-    .filter((r) => !r.pinnedTeacherId)
+    .filter((r) => r.pins.length === 0)
     .sort((a, b) => a.eligible.length - b.eligible.length || b.load - a.load || a.order - b.order)
 
   for (const r of open) {
@@ -151,7 +189,7 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
         kind: 'unassigned', severity: 'error', classId: r.cls.id, subjectId: r.subjectId,
         message: `${label(r)} has no teacher: ${why}.`,
       })
-      result.set(r.order, { classId: r.cls.id, subjectId: r.subjectId, periods: r.periods, teacherId: null, tier: null, pinned: false })
+      result.set(r.order, [{ classId: r.cls.id, subjectId: r.subjectId, periods: r.periods, teacherId: null, tier: null, pinned: false, ...lineFields(r) }])
       continue
     }
 
@@ -164,9 +202,9 @@ export function assignTeachers(data: SchoolData, rng: Rng) {
         message: `${best.name} takes ${label(r)} (junior class, outside their listed skills).`,
       })
     }
-    result.set(r.order, { classId: r.cls.id, subjectId: r.subjectId, periods: r.periods, teacherId: best.id, tier, pinned: false })
+    result.set(r.order, [{ classId: r.cls.id, subjectId: r.subjectId, periods: r.periods, teacherId: best.id, tier, pinned: false, ...lineFields(r) }])
   }
 
-  const assignments = reqs.map((r) => result.get(r.order)!)
+  const assignments = reqs.flatMap((r) => result.get(r.order)!)
   return { assignments, issues, load }
 }

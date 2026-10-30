@@ -1,7 +1,8 @@
 import { className } from '../../engine/assign'
 import { periodsOn } from '../../engine/blocks'
 import { teacherSlots } from '../../engine/evaluate'
-import { groupLabel, labCellText } from './labText'
+import { labCellText } from './labText'
+import { lineCellText, slotClasses } from './lineText'
 import type { Routine, SchoolData } from '../../engine/types'
 
 /** Plain black-on-white routines, one per page, shown only when printing. */
@@ -23,6 +24,7 @@ export function PrintSheet({ data, routine, mode }: { data: SchoolData; routine:
             cell: (s: number) => {
               const x = routine.grid[c.id]?.[s]
               if (x?.lab) return labCellText(x.lab, (id) => subject.get(id)?.name ?? '')
+              if (x?.line) return lineCellText(x.line, c.id, (id) => subject.get(id)?.name ?? '', (id) => teacher.get(id)?.name ?? '')
               return x ? [subject.get(x.subjectId)?.name ?? '', teacher.get(x.teacherId)?.name ?? ''] : null
             },
           }))
@@ -35,7 +37,7 @@ export function PrintSheet({ data, routine, mode }: { data: SchoolData; routine:
               const here = slots.get(t.id)?.[s] ?? []
               return here.length
                 ? [
-                    here.map((h) => (h.lab ? groupLabel(className(cls.get(h.classId)!), h.group) : className(cls.get(h.classId)!))).join(' + '),
+                    here.map((h) => slotClasses(h, (id) => (cls.get(id) ? className(cls.get(id)!) : ''))).join(' + '),
                     `${subject.get(here[0].subjectId)?.name ?? ''}${here[0].lab ? ' lab' : ''}`,
                   ]
                 : null

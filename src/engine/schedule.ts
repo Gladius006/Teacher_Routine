@@ -3,13 +3,14 @@ import { slotsPerWeek } from './blocks'
 import { evaluate } from './evaluate'
 import { formatGrades, isOffered } from './grades'
 import { labPeriods, labPlan } from './labs'
+import { linePeriodsFor, lineSubjects, validLines } from './lines'
 import { mulberry32 } from './rng'
 import { placeLessons, type PlaceOptions } from './place'
 import type { Issue, Routine, SchoolData } from './types'
 
 /** Stable short hash of the inputs, used to tell when a routine is out of date. */
 export function hashInputs(data: SchoolData): string {
-  const s = JSON.stringify([data.settings, data.subjects, data.teachers, data.classes])
+  const s = JSON.stringify([data.settings, data.subjects, data.teachers, data.classes, ...(data.lines?.length ? [data.lines] : [])])
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
@@ -24,8 +25,10 @@ export function precheck(data: SchoolData): Issue[] {
   const S = slotsPerWeek(data.settings)
   const subjectById = new Map(data.subjects.map((s) => [s.id, s]))
   for (const cls of data.classes) {
-    const labs = labPeriods(labPlan(cls, subjectById))
-    const need = cls.curriculum.reduce((n, c) => n + Math.max(0, c.periods), 0) + labs
+    const labs = labPeriods(labPlan(cls, subjectById, data))
+    const inLines = lineSubjects(data, cls.id)
+    const lines = validLines(data).reduce((n, l) => n + linePeriodsFor(l, cls.id), 0)
+    const need = cls.curriculum.reduce((n, c) => n + (inLines.has(c.subjectId) ? 0 : Math.max(0, c.periods)), 0) + lines + labs
     if (need > S) {
       issues.push({
         kind: 'overCapacity', severity: 'error', classId: cls.id,

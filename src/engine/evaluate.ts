@@ -20,11 +20,20 @@ export interface TeacherSlot {
   /** Set in a practical block: the group they have in the lab, and how the block runs. */
   group?: number
   lab?: { block: number; part: number; length: number }
+  /** Set in an option line period: the line, and every class whose students sit in this lesson. */
+  line?: string
+  classIds?: Id[]
 }
 
-/** Each teacher in a cell: one for a lesson, one per lab for a practical block. */
-export function cellTeachers(cell: Cell): { teacherId: Id; subjectId: Id; group?: number }[] {
-  return cell.lab ? cell.lab.stations : [{ teacherId: cell.teacherId, subjectId: cell.subjectId }]
+/**
+ * Each teacher in a class's cell: one for a lesson, one per lab in a lab time,
+ * one per subject in an option line period. A line lesson shared by several
+ * classes is listed only in its first class, so it counts once.
+ */
+export function cellTeachers(cell: Cell, classId?: Id): { teacherId: Id; subjectId: Id; group?: number; classIds?: Id[] }[] {
+  if (cell.lab) return cell.lab.stations
+  if (cell.line) return cell.line.items.filter((i) => classId === undefined || i.classIds[0] === classId)
+  return [{ teacherId: cell.teacherId, subjectId: cell.subjectId }]
 }
 
 /** True when a teacher's lab session carries on into the next period, so the two aren't back to back. */
@@ -41,8 +50,12 @@ export function teacherSlots(data: SchoolData, grid: Grid): Map<Id, TeacherSlot[
     cells.forEach((cell, s) => {
       if (!cell || s >= S) return
       const lab = cell.lab && { block: cell.lab.block, part: cell.lab.part, length: cell.lab.length }
-      for (const st of cellTeachers(cell)) {
-        map.get(st.teacherId)?.[s].push({ classId: cls.id, subjectId: st.subjectId, ...(lab ? { group: st.group, lab } : {}) })
+      for (const st of cellTeachers(cell, cls.id)) {
+        map.get(st.teacherId)?.[s].push({
+          classId: cls.id, subjectId: st.subjectId,
+          ...(lab ? { group: st.group, lab } : {}),
+          ...(cell.line ? { line: cell.line.name, classIds: st.classIds } : {}),
+        })
       }
     })
   }
@@ -122,7 +135,7 @@ export function evaluate(data: SchoolData, grid: Grid): Evaluation {
       for (let p = len - 1; p >= 0; p--) {
         const cell = cells[d * P + p]
         if (!cell) free++
-        if (cell?.lab) seen = true
+        if (cell?.lab || cell?.line) seen = true
         else if (cell) {
           seen = true
           const end = endOf.get(cell.subjectId) ?? 0

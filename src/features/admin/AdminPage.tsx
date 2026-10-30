@@ -24,7 +24,7 @@ function ago(iso: string | null): string {
   return dtf.format(Date.parse(iso))
 }
 
-const SECTION_NAMES: Record<string, string> = { settings: 'bell schedule', subjects: 'subjects', teachers: 'teachers', classes: 'classes' }
+const SECTION_NAMES: Record<string, string> = { settings: 'bell schedule', subjects: 'subjects', teachers: 'teachers', classes: 'classes', lines: 'option lines' }
 
 /** Plain-language line for an activity log entry. */
 function describe(e: ActivityEntry, userName: (id: string) => string): string {

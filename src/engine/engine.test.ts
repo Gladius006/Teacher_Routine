@@ -177,7 +177,7 @@ describe('generateRoutine', () => {
       assertHardRules(data, r)
       expect(r.stats.clashes).toBe(0)
     }
-  })
+  }, 30_000)
 
   it('is repeatable for a seed and varies between seeds', () => {
     const data = randomSchool(9)

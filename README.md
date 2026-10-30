@@ -11,6 +11,8 @@ A web app that builds a school's weekly routine. It matches teachers to subjects
 - Shorter days, such as a 4-period Saturday.
 - Subjects like Physical Ed. or Work Education can be kept to the last periods of the day.
 - Labs and practicals (Subjects page, "Lab and Practical"): classes are split into groups A, B, C… for labs only. Groups use the labs side by side with their subject teachers, groups without a lab are free, and no lab is double-booked.
+- Option lines for XI and XII: optional subjects taught at the same time (Physics / Nutrition / Economics), with students of several classes sitting together when they share a subject and teacher.
+- A class's subject can be shared by two or three teachers, each with their own periods.
 - **Add Section** makes 9B from 9A in one click; sections can have stream names like "12 Commerce".
 - Optional **sign-in and cloud saving** with an admin dashboard (schools, users, activity log). See [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md).
 

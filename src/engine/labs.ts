@@ -1,4 +1,5 @@
-import type { ClassSection, Id, LabInfo, Subject } from './types'
+import { lineSubjects } from './lines'
+import type { ClassSection, Id, LabInfo, SchoolData, Subject } from './types'
 
 /** Classes that get a new lab by default. */
 export const DEFAULT_LAB_GRADES = [11, 12]
@@ -33,11 +34,12 @@ export function cleanLab(s: Subject): Subject {
   return rest
 }
 
-/** The class's lab subjects: subjects it has that have a lab for its grade. */
-export function classLabs(cls: ClassSection, subjectById: Map<Id, Subject>): Subject[] {
+/** The class's lab subjects: subjects it has (itself or in an option line) that have a lab for its grade. */
+export function classLabs(cls: ClassSection, subjectById: Map<Id, Subject>, data?: SchoolData): Subject[] {
   const out: Subject[] = []
-  for (const item of cls.curriculum) {
-    const s = subjectById.get(item.subjectId)
+  const ids = [...cls.curriculum.map((i) => i.subjectId), ...(data ? lineSubjects(data, cls.id) : [])]
+  for (const id of ids) {
+    const s = subjectById.get(id)
     if (s && isLab(s.lab) && s.lab.grades.includes(cls.grade) && !out.includes(s)) out.push(s)
   }
   return out
@@ -53,8 +55,8 @@ const int = (n: number, min: number) => Math.max(min, Math.round(n))
  * with one group free in each. Labs of different lengths go in separate blocks;
  * a second session a week runs a second round.
  */
-export function labPlan(cls: ClassSection, subjectById: Map<Id, Subject>): LabPlan | null {
-  const labs = classLabs(cls, subjectById)
+export function labPlan(cls: ClassSection, subjectById: Map<Id, Subject>, data?: SchoolData): LabPlan | null {
+  const labs = classLabs(cls, subjectById, data)
   if (labs.length === 0) return null
   const blocks: LabBlock[] = []
   const lengths = [...new Set(labs.map((s) => int(s.lab!.periods, 1)))].sort((a, b) => b - a)

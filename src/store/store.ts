@@ -5,7 +5,7 @@ import { syncSubjectClasses } from '../engine/grades'
 import { cleanLab } from '../engine/labs'
 import { emptySchool } from '../engine/sample'
 import { nextSection } from '../engine/sections'
-import type { ClassSection, Id, Routine, SchoolData, Settings, Subject, Teacher } from '../engine/types'
+import type { ClassSection, Id, OptionLine, Routine, SchoolData, Settings, Subject, Teacher, TeacherShare } from '../engine/types'
 
 export type ThemePref = 'system' | 'light' | 'dark'
 
@@ -21,6 +21,8 @@ interface State {
   upsertTeacher: (t: Teacher) => void
   removeTeacher: (id: Id) => void
   upsertClass: (c: ClassSection) => void
+  upsertLine: (line: OptionLine) => void
+  removeLine: (id: Id) => void
   removeClass: (id: Id) => void
   /** Adds one more section to a grade, with a free name and the last section's subjects. Returns its id. */
   addSection: (grade: number) => Id
@@ -31,6 +33,12 @@ interface State {
   /** Replaces everything with a school loaded from the cloud. */
   loadCloud: (data: SchoolData, routine: Routine | null, started: boolean) => void
 }
+
+/** Applies a change to every option line, dropping subjects and lines left empty. */
+const mapLines = (lines: OptionLine[] | undefined, f: (l: OptionLine) => OptionLine) =>
+  lines ? lines.map(f).map((l) => ({ ...l, items: l.items.filter((i) => i.classIds.length > 0) })) : lines
+
+const withoutTeacher = (shares: TeacherShare[] | undefined, id: Id) => shares?.filter((x) => x.teacherId !== id)
 
 const upsert = <T extends { id: Id }>(list: T[], item: T) =>
   list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]
@@ -68,6 +76,7 @@ export const useStore = create<State>()(
               ...(t.junior ? { junior: t.junior.filter((x) => x !== id) } : {}),
             })),
             classes: s.data.classes.map((c) => ({ ...c, curriculum: c.curriculum.filter((i) => i.subjectId !== id) })),
+            lines: mapLines(s.data.lines, (l) => ({ ...l, items: l.items.filter((i) => i.subjectId !== id) })),
           },
         })),
 
@@ -79,13 +88,28 @@ export const useStore = create<State>()(
             teachers: s.data.teachers.filter((x) => x.id !== id),
             classes: s.data.classes.map((c) => ({
               ...c,
-              curriculum: c.curriculum.map((i) => (i.pinnedTeacherId === id ? { ...i, pinnedTeacherId: null } : i)),
+              curriculum: c.curriculum.map((i) => {
+                const next = i.pinnedTeacherId === id ? { ...i, pinnedTeacherId: null } : i
+                return next.teachers ? { ...next, teachers: withoutTeacher(next.teachers, id) } : next
+              }),
             })),
+            lines: mapLines(s.data.lines, (l) => ({ ...l, items: l.items.map((i) => ({ ...i, teachers: withoutTeacher(i.teachers, id)! })) })),
           },
         })),
 
       upsertClass: (cls) => set((s) => ({ data: { ...s.data, classes: upsert(s.data.classes, cls) } })),
-      removeClass: (id) => set((s) => ({ data: { ...s.data, classes: s.data.classes.filter((x) => x.id !== id) } })),
+      removeClass: (id) =>
+        set((s) => ({
+          data: {
+            ...s.data,
+            classes: s.data.classes.filter((x) => x.id !== id),
+            lines: mapLines(s.data.lines, (l) => ({
+              ...l, classIds: l.classIds.filter((x) => x !== id), items: l.items.map((i) => ({ ...i, classIds: i.classIds.filter((x) => x !== id) })),
+            })),
+          },
+        })),
+      upsertLine: (line) => set((s) => ({ data: { ...s.data, lines: upsert(s.data.lines ?? [], line) } })),
+      removeLine: (id) => set((s) => ({ data: { ...s.data, lines: (s.data.lines ?? []).filter((l) => l.id !== id) } })),
       addSection: (grade) => {
         const siblings = get().data.classes.filter((c) => c.grade === grade)
         const from = [...siblings].sort((a, b) => a.section.localeCompare(b.section)).at(-1)

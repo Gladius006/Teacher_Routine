@@ -6,6 +6,8 @@ import { hasShortDays, isAdjacent } from '../../engine/blocks'
 import { continues, teacherSlots } from '../../engine/evaluate'
 import { groupName, isLab } from '../../engine/labs'
 import { groupLabel, labCellText, labGroupsText } from './labText'
+import { lineCellText, sharedClasses } from './lineText'
+import { lineItemsFor } from '../../engine/lines'
 import { hashInputs } from '../../engine/schedule'
 import type { Id, Issue, Routine, SchoolData, Severity } from '../../engine/types'
 import { useStore } from '../../store/store'
@@ -276,6 +278,21 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
             label: `Lab, ${lab.length} ${lab.length === 1 ? 'period' : 'periods'}: ${full.join('; ')}`,
           }
         }
+        if (c.line) {
+          // An option line period: the subjects this class's students take now.
+          const [title, subtitle] = lineCellText(c.line, selectedId, (id) => subjectById.get(id)?.name ?? 'Subject', (id) => teacherById.get(id)?.name ?? 'teacher')
+          const here = lineItemsFor(c.line, selectedId)
+          return {
+            key: `${s}`,
+            lab: true,
+            color: subjectById.get(here[0]?.subjectId ?? '')?.color,
+            title,
+            subtitle,
+            clash: here.some((i) => clash.get(i.teacherId)?.has(s)),
+            noRest: here.some((i) => noRest.get(i.teacherId)?.has(s)),
+            label: `${title}: ${subtitle}. Each student is in the subject they chose.`,
+          }
+        }
         const subj = subjectById.get(c.subjectId)
         const t = teacherById.get(c.teacherId)
         const nr = noRest.get(c.teacherId)?.has(s)
@@ -316,13 +333,15 @@ function RoutineView({ data, routine, stale, onRegenerate, running }: { data: Sc
             label: `Class ${name}, ${subj?.name} lab, ${span} periods${nr ? '. No rest next to this' : ''}`,
           }
         }
-        const names = here.map((h) => className(classById.get(h.classId)!)).join(' + ')
+        const names = here
+          .map((h) => (h.classIds ? sharedClasses(h.classIds, (id) => (classById.get(id) ? className(classById.get(id)!) : '')) : className(classById.get(h.classId)!)))
+          .join(' + ')
         const nr = noRest.get(selectedId)?.has(s)
         return {
           key: `${s}`,
           color: subj?.color,
           title: `Class ${names}`,
-          subtitle: subj?.name,
+          subtitle: first.line ? `${subj?.name} · ${first.line}` : subj?.name,
           noRest: nr,
           clash: here.length > 1,
           label: `Class ${names}, ${subj?.name}${nr ? '. No rest next to this period' : ''}`,
@@ -570,7 +589,12 @@ function AssignmentMatrix({ data, routine }: { data: SchoolData; routine: Routin
   const classes = [...data.classes].sort((a, b) => a.grade - b.grade || a.section.localeCompare(b.section))
   const used = data.subjects.filter((s) => routine.assignments.some((a) => a.subjectId === s.id))
   const teacherById = new Map(data.teachers.map((t) => [t.id, t]))
-  const lookup = new Map(routine.assignments.map((a) => [`${a.classId}:${a.subjectId}`, a]))
+  const classById = new Map(data.classes.map((c) => [c.id, c]))
+  // Every teacher of each class's subject: shared subjects list several, line subjects show in each class taking them.
+  const lookup = new Map<string, typeof routine.assignments>()
+  for (const a of routine.assignments) {
+    for (const id of a.lineClassIds ?? [a.classId]) lookup.set(`${id}:${a.subjectId}`, [...(lookup.get(`${id}:${a.subjectId}`) ?? []), a])
+  }
 
   return (
     <div className="-mx-1.5 overflow-x-auto px-1.5">
@@ -591,19 +615,23 @@ function AssignmentMatrix({ data, routine }: { data: SchoolData; routine: Routin
             <tr key={c.id}>
               <th scope="row" className="sticky left-0 z-[1] bg-surface pr-2 text-left font-medium">{className(c)}</th>
               {used.map((s) => {
-                const a = lookup.get(`${c.id}:${s.id}`)
-                if (!a) return <td key={s.id} />
-                const t = a.teacherId ? teacherById.get(a.teacherId) : null
+                const all = lookup.get(`${c.id}:${s.id}`)
+                if (!all) return <td key={s.id} />
+                const a = all[0]
+                const ts = all.map((x) => (x.teacherId ? teacherById.get(x.teacherId) : undefined))
+                const t = ts.every(Boolean) ? ts[0] : null
+                const names = ts.map((x) => x?.name ?? 'No teacher').join(', ')
                 const tone = !t ? 'bg-danger-soft text-danger' : a.tier === 'none' ? 'bg-warn-soft text-warn' : a.tier === 'secondary' ? 'bg-shell text-ink-2' : 'bg-accent-soft text-accent'
                 const tierText = !t ? 'no teacher' : a.tier === 'primary' ? 'main subject' : a.tier === 'secondary' ? 'extra subject' : 'outside listed skills'
+                const shared = a.lineClassIds && a.lineClassIds.length > 1 ? `, taught together with ${a.lineClassIds.filter((id) => id !== c.id).map((id) => (classById.get(id) ? className(classById.get(id)!) : '')).join(', ')}` : ''
                 return (
                   <td key={s.id} className="p-0">
                     <div
-                      title={`${s.name}: ${t?.name ?? 'No teacher'} (${tierText})${a.pinned ? ', pinned' : ''}`}
+                      title={`${s.name}: ${names} (${tierText})${a.pinned ? ', chosen' : ''}${shared}`}
                       className={cx('flex h-9 items-center justify-center rounded-lg font-mono text-xs font-medium', tone, a.pinned && 'ring-1 ring-ink/30')}
                     >
-                      <span className="sr-only">{s.name}: {t?.name ?? 'No teacher'}, {tierText}</span>
-                      <span aria-hidden translate="no">{t?.code ?? '?'}</span>
+                      <span className="sr-only">{s.name}: {names}, {tierText}{shared}</span>
+                      <span aria-hidden translate="no">{ts.map((x) => x?.code ?? '?').join(' ')}</span>
                     </div>
                   </td>
                 )

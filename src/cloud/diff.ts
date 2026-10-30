@@ -1,7 +1,7 @@
 import type { SchoolData } from '../engine/types'
 
-export type Section = 'settings' | 'subjects' | 'teachers' | 'classes'
-const SECTIONS: Section[] = ['settings', 'subjects', 'teachers', 'classes']
+export type Section = 'settings' | 'subjects' | 'teachers' | 'classes' | 'lines'
+const SECTIONS: Section[] = ['settings', 'subjects', 'teachers', 'classes', 'lines']
 
 /** Which parts of the school changed between two saves, for the activity log. */
 export function changedSections(before: SchoolData, after: SchoolData): Section[] {

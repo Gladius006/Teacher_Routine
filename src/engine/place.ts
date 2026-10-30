@@ -1,6 +1,7 @@
 import { isAdjacent, periodsOn } from './blocks'
 import { className } from './assign'
-import { groupName, isLab, labPlan } from './labs'
+import { isLab, labPlan } from './labs'
+import { packLine, validLines, type LineLesson } from './lines'
 import { randInt, type Rng } from './rng'
 import type { Assignment, Cell, Grid, Id, Issue, SchoolData } from './types'
 import { W } from './weights'
@@ -22,30 +23,33 @@ export interface PlaceResult {
 
 const T_START = 40
 const T_END = 0.05
-/** Share of moves that move a practical block, when there are any. */
+/** Share of moves that move a block (lab time or option line period), when there are any. */
 const BLOCK_MOVES = 0.2
 
+/**
+ * A run of periods that has to stay together and be at the same time in every
+ * class it covers: a lab time (one class, groups spread over the labs) or an
+ * option line period (several classes, a few subjects at once).
+ */
 interface Block {
-  c: number
-  /** Index of the block within its class, for display. */
-  index: number
+  /** Class indices it covers; teachers are counted on the first class's cells only. */
+  cls: number[]
+  /** Unit ids per class, one per period. */
+  units: number[][]
   length: number
-  groups: number
-  units: number[]
-  /** Subject indices of the labs this block uses. */
+  /** Subject indices of the labs used (lab times only). */
   labs: number[]
-  stations: { group: number; subjectId: Id; teacherId: Id }[]
   start: number
+  cell: (part: number) => Cell
 }
 
 /**
  * Phase 2: place lessons into each class's week with simulated annealing.
  * State is one array per class, so a class can never be double-booked. A cell
- * holds a "unit": a single lesson, or one period of a practical block (where
- * the class's groups are spread over several labs, each with its own teacher).
- * A move swaps two single lessons inside one class, or moves a whole block to
- * another run of periods; only the touched teacher-days, class-days and
- * lab-days are rescored.
+ * holds a "unit": a single lesson, or one period of a block. A move swaps two
+ * single lessons inside one class, or moves a whole block to another run of
+ * periods (in all its classes at once); only the touched teacher-days,
+ * class-days and lab-days are rescored.
  */
 export function placeLessons(data: SchoolData, assignments: Assignment[], rng: Rng, opts: PlaceOptions = {}): PlaceResult {
   const { settings, teachers, classes, subjects } = data
@@ -98,53 +102,66 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
   const unitPart: number[] = []
   const blocks: Block[] = []
   const singles: number[][] = classes.map(() => [])
-  const classBlocks: number[][] = classes.map(() => [])
+  const newUnit = (teachersHere: number[], subject: number, block: number, part: number) => {
+    unitTeachers.push(teachersHere)
+    unitSubject.push(subject)
+    unitSubjectId.push(subject >= 0 ? subjects[subject].id : '')
+    unitEnd.push(subject >= 0 ? Math.max(0, Math.round(subjects[subject].endOfDay ?? 0)) : 0)
+    unitBlock.push(block)
+    unitPart.push(part)
+    return unitTeachers.length - 1
+  }
+  const addBlock = (cls: number[], length: number, teachersHere: number[], labs: number[], cell: Block['cell']) => {
+    const b = blocks.length
+    // Teachers sit on the first class's cells only, so a shared lesson counts once.
+    const units = cls.map((_, j) => Array.from({ length }, (_, q) => newUnit(j === 0 ? teachersHere : [], -1, b, q)))
+    blocks.push({ cls, units, length, labs, start: -1, cell })
+  }
 
   for (const a of assignments) {
-    if (a.teacherId === null) continue
+    if (a.teacherId === null || a.lineId) continue
     const ci = cIndex.get(a.classId)
     const ti = tIndex.get(a.teacherId)
     const si = sIndex.get(a.subjectId)
     if (ci === undefined || ti === undefined || si === undefined) continue
-    for (let k = 0; k < a.periods; k++) {
-      const u = unitTeachers.length
-      unitTeachers.push([ti])
-      unitSubject.push(si)
-      unitSubjectId.push(a.subjectId)
-      unitEnd.push(Math.max(0, Math.round(subjects[si].endOfDay ?? 0)))
-      unitBlock.push(-1)
-      unitPart.push(0)
-      singles[ci].push(u)
+    for (let k = 0; k < a.periods; k++) singles[ci].push(newUnit([ti], si, -1, 0))
+  }
+
+  // Option lines: pack each line's lessons into shared periods.
+  const lineAssignments = assignments.filter((a) => a.lineId && a.teacherId && tIndex.has(a.teacherId))
+  for (const line of validLines(data)) {
+    const lessons: LineLesson[] = []
+    for (const a of lineAssignments.filter((x) => x.lineId === line.id)) {
+      for (let k = 0; k < a.periods; k++) lessons.push({ subjectId: a.subjectId, teacherId: a.teacherId!, classIds: a.lineClassIds ?? [a.classId] })
+    }
+    for (const slot of packLine(lessons)) {
+      const cls = [...new Set(slot.flatMap((l) => l.classIds))].map((id) => cIndex.get(id)).filter((c): c is number => c !== undefined)
+      if (cls.length === 0) continue
+      const lineCell: Cell = { subjectId: '', teacherId: '', line: { lineId: line.id, name: line.name, items: slot } }
+      addBlock(cls, 1, slot.map((l) => tIndex.get(l.teacherId)!), [], () => lineCell)
     }
   }
 
-  // Practical blocks: every station needs its subject's teacher for the class.
-  const teacherFor = new Map(assignments.filter((a) => a.teacherId).map((a) => [`${a.classId}:${a.subjectId}`, a.teacherId!]))
+  // Lab times: every lab needs its subject's teacher for the class (the first, if several share it).
+  const teacherFor = new Map<string, Id>()
+  for (const a of assignments) {
+    if (!a.teacherId) continue
+    for (const id of a.lineClassIds ?? [a.classId]) if (!teacherFor.has(`${id}:${a.subjectId}`)) teacherFor.set(`${id}:${a.subjectId}`, a.teacherId)
+  }
   classes.forEach((cls, c) => {
-    const plan = labPlan(cls, subjectById)
+    const plan = labPlan(cls, subjectById, data)
     if (!plan) return
+    let index = 0
     for (const planned of plan.blocks) {
       const stations = planned.stations
-        .filter((st) => teacherFor.has(`${cls.id}:${st.subjectId}`) && tIndex.has(teacherFor.get(`${cls.id}:${st.subjectId}`)!))
+        .filter((st) => tIndex.has(teacherFor.get(`${cls.id}:${st.subjectId}`) ?? ''))
         .map((st) => ({ ...st, teacherId: teacherFor.get(`${cls.id}:${st.subjectId}`)! }))
       if (stations.length === 0) continue
-      const b = blocks.length
-      const block: Block = {
-        c, index: classBlocks[c].length, length: planned.length, groups: plan.groups, units: [],
-        labs: stations.map((st) => sIndex.get(st.subjectId)!), stations, start: -1,
-      }
-      for (let q = 0; q < planned.length; q++) {
-        const u = unitTeachers.length
-        unitTeachers.push(stations.map((st) => tIndex.get(st.teacherId)!))
-        unitSubject.push(-1)
-        unitSubjectId.push('')
-        unitEnd.push(0)
-        unitBlock.push(b)
-        unitPart.push(q)
-        block.units.push(u)
-      }
-      blocks.push(block)
-      classBlocks[c].push(b)
+      const blockIndex = index++
+      addBlock(
+        [c], planned.length, stations.map((st) => tIndex.get(st.teacherId)!), stations.map((st) => sIndex.get(st.subjectId)!),
+        (part) => ({ subjectId: '', teacherId: '', lab: { block: blockIndex, part, length: planned.length, groups: plan.groups, stations } }),
+      )
     }
   })
 
@@ -161,45 +178,45 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       occ[t * S + s] += sign
       if (carries) cont[t * S + s] += sign
     }
-    if (b >= 0) for (const k of blocks[b].labs) roomOcc[k * S + s] += sign
+    // Labs are counted once, on the first class's cells.
+    if (b >= 0 && unitTeachers[u].length > 0) for (const k of blocks[b].labs) roomOcc[k * S + s] += sign
   }
 
-  const grid: Int32Array[] = []
+  const grid: Int32Array[] = classes.map(() => new Int32Array(S).fill(-1))
+  const room = new Array<number>(C).fill(N)
   const placedBlocks: number[] = []
-  for (let c = 0; c < C; c++) {
-    const g = new Int32Array(S).fill(-1)
-    grid.push(g)
-    const free = (s: number) => g[s] < 0
-    let room = N
 
-    // Blocks first: they need runs of periods. Spread over the days from a random start.
-    let day = randInt(rng, D)
-    for (const b of classBlocks[c]) {
-      const block = blocks[b]
-      const windows = windowsFor(block.length)
-      let start = -1
-      for (let k = 0; k < D && start < 0; k++) {
-        const d = (day + k) % D
-        start = windows.find((w) => Math.floor(w / P) === d && block.units.every((_, q) => free(w + q))) ?? -1
-      }
-      if (start < 0 || room < block.length) {
-        issues.push({
-          kind: 'unplaced', severity: 'error', classId: classes[c].id,
-          message: `Class ${className(classes[c])}: a ${block.length}-period lab session did not fit in the week. Shorten lab sessions or reduce this class's periods.`,
-        })
-        continue
-      }
-      block.units.forEach((u, q) => { g[start + q] = u })
-      block.start = start
-      placedBlocks.push(b)
-      room -= block.length
-      day = (Math.floor(start / P) + 1) % D
+  // Blocks first (option lines, then lab times): they need the same free periods in every class they cover.
+  for (let b = 0; b < blocks.length; b++) {
+    const block = blocks[b]
+    const windows = windowsFor(block.length)
+    const fits = (w: number) => block.cls.every((c) => block.units[0].every((_, q) => grid[c][w + q] < 0))
+    const day = randInt(rng, D)
+    let start = -1
+    for (let k = 0; k < D && start < 0; k++) start = windows.find((w) => Math.floor(w / P) === (day + k) % D && fits(w)) ?? -1
+    if (start < 0 || block.cls.some((c) => room[c] < block.length)) {
+      const first = classes[block.cls[0]]
+      const cell = block.cell(0)
+      issues.push({
+        kind: 'unplaced', severity: 'error', classId: first.id,
+        message: cell.line
+          ? `${cell.line.name}: a period did not fit in the week for ${block.cls.map((c) => className(classes[c])).join(' and ')}. Reduce their periods.`
+          : `Class ${className(first)}: a ${block.length}-period lab time did not fit in the week. Shorten lab sessions or reduce this class's periods.`,
+      })
+      continue
     }
+    block.cls.forEach((c, j) => block.units[j].forEach((u, q) => { grid[c][start + q] = u }))
+    block.cls.forEach((c) => { room[c] -= block.length })
+    block.start = start
+    placedBlocks.push(b)
+  }
 
+  for (let c = 0; c < C; c++) {
+    const g = grid[c]
     const lessons = singles[c]
-    if (lessons.length > room) {
+    if (lessons.length > room[c]) {
       // Drop what cannot fit, reporting per subject.
-      const dropped = lessons.splice(room)
+      const dropped = lessons.splice(room[c])
       const bySubject = new Map<Id, number>()
       for (const u of dropped) bySubject.set(unitSubjectId[u], (bySubject.get(unitSubjectId[u]) ?? 0) + 1)
       for (const [sid, n] of bySubject) {
@@ -216,7 +233,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
     for (const u of lessons) {
       let s = -1
       for (let k = 0; k < D && s < 0; k++, d = (d + 1) % D) {
-        for (let p = 0; p < len[d]; p++) if (free(d * P + p)) { s = d * P + p; break }
+        for (let p = 0; p < len[d]; p++) if (g[d * P + p] < 0) { s = d * P + p; break }
       }
       g[s] = u
     }
@@ -326,6 +343,12 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
     if (a >= 0) apply(a, j, 1)
   }
 
+  // A move: cell swaps, each inside one class (class, from, to), reused between moves.
+  const maxSwaps = Math.max(1, ...blocks.map((b) => b.cls.length * b.length))
+  const mvC = new Int32Array(maxSwaps), mvI = new Int32Array(maxSwaps), mvJ = new Int32Array(maxSwaps)
+  let nm = 0
+  const push = (c: number, i: number, j: number) => { mvC[nm] = c; mvI[nm] = i; mvJ[nm] = j; nm++ }
+
   if ((movable.length > 0 || placedBlocks.length > 0) && total > 0 && N > 1) {
     for (; iter < maxIter; iter++) {
       if ((iter & 4095) === 0) {
@@ -336,10 +359,8 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       }
       const temp = T_START * Math.pow(T_END / T_START, iter / maxIter)
       tdKeys.length = cdKeys.length = ldKeys.length = 0
+      nm = 0
 
-      // Pick a move: a list of cell swaps inside one class.
-      let c: number
-      const pairs: [number, number][] = []
       let blockMoved = -1, blockFrom = -1
       if (placedBlocks.length > 0 && (movable.length === 0 || rng() < BLOCK_MOVES)) {
         const b = placedBlocks[randInt(rng, placedBlocks.length)]
@@ -347,16 +368,15 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
         const windows = windowsFor(block.length)
         const to = windows[randInt(rng, windows.length)]
         if (to === block.start) continue
-        c = block.c
-        const g = grid[c]
+        // The new run must hold only single lessons or free periods, in every class the block covers.
         let ok = true
-        for (let q = 0; q < block.length; q++) if (g[to + q] >= 0 && unitBlock[g[to + q]] >= 0) ok = false
+        for (const c of block.cls) for (let q = 0; q < block.length; q++) if (grid[c][to + q] >= 0 && unitBlock[grid[c][to + q]] >= 0) ok = false
         if (!ok) continue
-        for (let q = 0; q < block.length; q++) pairs.push([block.start + q, to + q])
+        for (const c of block.cls) for (let q = 0; q < block.length; q++) push(c, block.start + q, to + q)
         blockMoved = b
         blockFrom = block.start
       } else {
-        c = movable[randInt(rng, movable.length)]
+        const c = movable[randInt(rng, movable.length)]
         const g = grid[c]
         const oi = randInt(rng, N)
         let oj = randInt(rng, N - 1)
@@ -366,15 +386,16 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
         if (a < 0 && b < 0) continue
         if ((a >= 0 && unitBlock[a] >= 0) || (b >= 0 && unitBlock[b] >= 0)) continue
         if (a >= 0 && b >= 0 && unitTeachers[a][0] === unitTeachers[b][0] && unitSubject[a] === unitSubject[b]) continue
-        pairs.push([i, j])
+        push(c, i, j)
       }
 
-      const g = grid[c]
-      for (const [i, j] of pairs) {
+      for (let m = 0; m < nm; m++) {
+        const c = mvC[m], i = mvI[m], j = mvJ[m]
         const di = (i / P) | 0, dj = (j / P) | 0
         addKey(cdKeys, c * D + di)
         addKey(cdKeys, c * D + dj)
-        for (const u of [g[i], g[j]]) { touchUnit(u, di); touchUnit(u, dj) }
+        const a = grid[c][i], b = grid[c][j]
+        touchUnit(a, di); touchUnit(a, dj); touchUnit(b, di); touchUnit(b, dj)
       }
 
       let old = 0
@@ -382,7 +403,7 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       for (const k of cdKeys) old += cdCost[k]
       for (const k of ldKeys) old += ldCost[k]
 
-      for (const [i, j] of pairs) swap(c, i, j)
+      for (let m = 0; m < nm; m++) swap(mvC[m], mvI[m], mvJ[m])
 
       let next = 0
       tdKeys.forEach((k, q) => { next += tdNew[q] = teacherDayCost((k / D) | 0, k % D) })
@@ -395,9 +416,9 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
         cdKeys.forEach((k, q) => { cdCost[k] = cdNew[q] })
         ldKeys.forEach((k, q) => { ldCost[k] = ldNew[q] })
         total += delta
-        if (blockMoved >= 0) blocks[blockMoved].start = pairs[0][1]
+        if (blockMoved >= 0) blocks[blockMoved].start = mvJ[0]
       } else {
-        for (let q = pairs.length - 1; q >= 0; q--) swap(c, pairs[q][0], pairs[q][1])
+        for (let m = nm - 1; m >= 0; m--) swap(mvC[m], mvI[m], mvJ[m])
         if (blockMoved >= 0) blocks[blockMoved].start = blockFrom
       }
     }
@@ -411,17 +432,8 @@ export function placeLessons(data: SchoolData, assignments: Assignment[], rng: R
       if (u < 0) return null
       const b = unitBlock[u]
       if (b < 0) return { subjectId: unitSubjectId[u], teacherId: teachers[unitTeachers[u][0]].id }
-      const block = blocks[b]
-      return {
-        subjectId: '', teacherId: '',
-        lab: { block: block.index, part: unitPart[u], length: block.length, groups: block.groups, stations: block.stations },
-      }
+      return blocks[b].cell(unitPart[u])
     })
   })
   return { grid: out, issues, score: Math.round(best), iterations: iter }
-}
-
-/** "Sec 1 Physics, Sec 2 Chemistry, Sec 3 Biology", for messages and tooltips. */
-export function describeStations(stations: { group: number; subjectId: Id }[], name: (id: Id) => string): string {
-  return stations.map((st) => `${groupName(st.group)} ${name(st.subjectId)}`).join(', ')
 }

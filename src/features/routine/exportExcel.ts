@@ -2,7 +2,8 @@ import type { Workbook, Worksheet } from 'exceljs'
 import { className } from '../../engine/assign'
 import { isAdjacent, periodsOn } from '../../engine/blocks'
 import { continues, teacherSlots } from '../../engine/evaluate'
-import { groupLabel, labCellText } from './labText'
+import { labCellText } from './labText'
+import { lineCellText, slotClasses } from './lineText'
 import type { Routine, SchoolData } from '../../engine/types'
 
 const INK = 'FF15201B'
@@ -154,7 +155,11 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
     headerCell(ov, 5, i + 2, s.name)
     ov.getCell(5, i + 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: tint(s.color, 0.7) } }
   })
-  const lookup = new Map(routine.assignments.map((a) => [`${a.classId}:${a.subjectId}`, a]))
+  // Every teacher of each class's subject (shared subjects list several; line subjects show in each class taking them).
+  const lookup = new Map<string, typeof routine.assignments>()
+  for (const a of routine.assignments) {
+    for (const id of a.lineClassIds ?? [a.classId]) lookup.set(`${id}:${a.subjectId}`, [...(lookup.get(`${id}:${a.subjectId}`) ?? []), a])
+  }
   classes.forEach((c, ri) => {
     const r = 6 + ri
     const h = ov.getCell(r, 1)
@@ -162,13 +167,14 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
     h.font = { bold: true }
     h.border = BORDER
     used.forEach((s, i) => {
-      const a = lookup.get(`${c.id}:${s.id}`)
+      const all = lookup.get(`${c.id}:${s.id}`)
       const cell = ov.getCell(r, i + 2)
       cell.border = BORDER
-      cell.alignment = { horizontal: 'center' }
-      if (!a) return
-      cell.value = a.teacherId ? teacher.get(a.teacherId)?.name ?? '' : 'No teacher'
-      if (!a.teacherId) cell.font = { color: { argb: 'FFA8231B' }, bold: true }
+      cell.alignment = { horizontal: 'center', wrapText: true }
+      if (!all) return
+      const missing = all.some((a) => !a.teacherId)
+      cell.value = missing ? 'No teacher' : all.map((a) => teacher.get(a.teacherId!)?.name ?? '').join(', ')
+      if (missing) cell.font = { color: { argb: 'FFA8231B' }, bold: true }
     })
   })
 
@@ -215,6 +221,10 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
         const [top, bottom] = labCellText(x.lab, (id) => subject.get(id)?.name ?? '')
         return { top, bottom }
       }
+      if (x.line) {
+        const [top, bottom] = lineCellText(x.line, c.id, (id) => subject.get(id)?.name ?? '', (id) => teacher.get(id)?.name ?? '')
+        return { top, bottom }
+      }
       const subj = subject.get(x.subjectId)
       return { top: subj?.name ?? '', bottom: teacher.get(x.teacherId)?.name ?? '', color: subj?.color }
     })
@@ -234,7 +244,7 @@ export async function buildRoutineWorkbook(data: SchoolData, routine: Routine): 
       const nextBusy = isAdjacent(settings, p, Math.floor(s / P)) && (next?.length ?? 0) > 0 && !(next.length === 1 && continues(here))
       const subj = subject.get(here[0].subjectId)
       return {
-        top: `Class ${here.map((h) => (h.lab ? groupLabel(className(cls.get(h.classId)!), h.group) : className(cls.get(h.classId)!))).join(' + ')}`,
+        top: `Class ${here.map((h) => slotClasses(h, (id) => (cls.get(id) ? className(cls.get(id)!) : ''))).join(' + ')}`,
         bottom: `${subj?.name ?? ''}${here[0].lab ? ' lab' : ''}`,
         color: subj?.color,
         flag: prevBusy || nextBusy,

@@ -61,6 +61,35 @@ export interface CurriculumItem {
   subjectId: Id
   periods: number
   pinnedTeacherId?: Id | null
+  /** Two or more teachers sharing the subject, with the periods each takes. Overrides pinnedTeacherId. */
+  teachers?: TeacherShare[]
+}
+
+export interface TeacherShare {
+  teacherId: Id
+  periods: number
+}
+
+/**
+ * Optional subjects that run at the same time (e.g. Physics / Nutrition / Economics).
+ * Each student takes one. Students of several classes taking the same subject sit
+ * together with one teacher.
+ */
+export interface OptionLine {
+  id: Id
+  name: string
+  /** Classes in the line, e.g. XI Sc and XI Hu. */
+  classIds: Id[]
+  items: LineItem[]
+}
+
+export interface LineItem {
+  subjectId: Id
+  /** Classes whose students can take it: a subset of the line's classes. */
+  classIds: Id[]
+  periods: number
+  /** Chosen teachers and their periods; empty = chosen automatically. */
+  teachers: TeacherShare[]
 }
 
 export interface ClassSection {
@@ -75,6 +104,8 @@ export interface SchoolData {
   subjects: Subject[]
   teachers: Teacher[]
   classes: ClassSection[]
+  /** Option lines. Missing in files saved before this option. */
+  lines?: OptionLine[]
 }
 
 export type SkillTier = 'primary' | 'secondary' | 'none'
@@ -86,6 +117,9 @@ export interface Assignment {
   teacherId: Id | null
   tier: SkillTier | null
   pinned: boolean
+  /** Set for a subject taught in an option line: the line, and every class whose students sit in this lesson. */
+  lineId?: Id
+  lineClassIds?: Id[]
 }
 
 export interface Cell {
@@ -94,6 +128,15 @@ export interface Cell {
   teacherId: Id
   /** Set when this period is part of a practical block, where the class's groups are spread over the labs. */
   lab?: LabCell
+  /** Set when this period belongs to an option line: the subjects running now. */
+  line?: LineCell
+}
+
+export interface LineCell {
+  lineId: Id
+  name: string
+  /** Subjects running in this period; each lists the classes whose students sit in it. */
+  items: { subjectId: Id; teacherId: Id; classIds: Id[] }[]
 }
 
 export interface LabStation {

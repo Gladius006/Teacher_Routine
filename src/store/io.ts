@@ -10,6 +10,7 @@ export function exportSchool(data: SchoolData): string {
 const isStr = (v: unknown): v is string => typeof v === 'string'
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr)
+const isShares = (v: unknown) => Array.isArray(v) && v.every((x) => x && isStr(x.teacherId) && isNum(x.periods))
 
 /** Parses an exported file. Throws an Error with a message fit to show the user. */
 export function importSchool(text: string): SchoolData {
@@ -40,10 +41,14 @@ export function importSchool(text: string): SchoolData {
     throw bad('teachers')
   if (!Array.isArray(d.classes) || !d.classes.every((x) =>
     x && isStr(x.id) && isNum(x.grade) && isStr(x.section) && Array.isArray(x.curriculum) &&
-    x.curriculum.every((c) => c && isStr(c.subjectId) && isNum(c.periods))))
+    x.curriculum.every((c) => c && isStr(c.subjectId) && isNum(c.periods) && (c.teachers === undefined || isShares(c.teachers)))))
     throw bad('classes')
+  if (d.lines !== undefined && !(Array.isArray(d.lines) && d.lines.every((l) =>
+    l && isStr(l.id) && isStr(l.name) && isStrArr(l.classIds) && Array.isArray(l.items) &&
+    l.items.every((i) => i && isStr(i.subjectId) && isStrArr(i.classIds) && isNum(i.periods) && isShares(i.teachers)))))
+    throw bad('option lines')
 
-  return { settings: s, subjects: d.subjects.map(cleanLab), teachers: d.teachers, classes: d.classes }
+  return { settings: s, subjects: d.subjects.map(cleanLab), teachers: d.teachers, classes: d.classes, ...(d.lines ? { lines: d.lines } : {}) }
 }
 
 

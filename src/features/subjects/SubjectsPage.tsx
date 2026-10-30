@@ -7,6 +7,7 @@ import { DEFAULT_LAB, DEFAULT_LAB_GRADES, groupNames, isLab } from '../../engine
 import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
 import type { LabInfo, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
+import { OptionLinesSection } from './OptionLines'
 
 /** Subject colors in rainbow order, as shown in the picker. */
 const PALETTE: { hex: string; name: string }[] = [
@@ -110,6 +111,7 @@ export function SubjectsPage() {
       </ConfirmDialog>
 
       {subjects.length > 0 && <LabsSection />}
+      {subjects.length > 0 && <OptionLinesSection />}
     </>
   )
 }

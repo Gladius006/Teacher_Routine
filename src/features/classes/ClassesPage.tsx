@@ -6,10 +6,12 @@ import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
 import { groupName, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
-import type { ClassSection, CurriculumItem, Subject } from '../../engine/types'
+import { linePeriodsFor, validLines } from '../../engine/lines'
+import type { ClassSection, CurriculumItem, SchoolData, Subject, TeacherShare } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
 export function ClassesPage() {
+  const data = useStore((s) => s.data)
   const classes = useStore((s) => s.data.classes)
   const subjects = useStore((s) => s.data.subjects)
   const settings = useStore((s) => s.data.settings)
@@ -67,9 +69,13 @@ export function ClassesPage() {
                 {list.map((c) => {
                   const misplaced = c.curriculum.filter((i) => !isOffered(subjectById.get(i.subjectId), c.grade))
                   const valid = c.curriculum.filter((i) => isOffered(subjectById.get(i.subjectId), c.grade))
-                  const plan = labPlan({ ...c, curriculum: valid }, subjectById)
+                  const plan = labPlan({ ...c, curriculum: valid }, subjectById, data)
                   const labs = labPeriods(plan)
-                  const used = valid.reduce((n, i) => n + i.periods, 0) + labs
+                  const lines = linesOf(data, c.id)
+                  const inLine = new Set(lines.flatMap((l) => l.items.filter((i) => i.classIds.includes(c.id)).map((i) => i.subjectId)))
+                  const own = valid.filter((i) => !inLine.has(i.subjectId))
+                  const linePeriods = lines.reduce((n, l) => n + linePeriodsFor(l, c.id), 0)
+                  const used = own.reduce((n, i) => n + i.periods, 0) + labs + linePeriods
                   const over = used > slots
                   return (
                     <li key={c.id}>
@@ -92,7 +98,12 @@ export function ClassesPage() {
                               <IconButton label={`Delete ${className(c)}`} className="hover:text-danger" onClick={() => setDeleting(c)}><Trash weight="light" /></IconButton>
                             </div>
                           </div>
-                          <CompositionBar items={valid} slots={slots} byId={subjectById} labs={labs} />
+                          <CompositionBar items={own} slots={slots} byId={subjectById} labs={labs + linePeriods} />
+                          {lines.length > 0 && (
+                            <p className="mt-2 text-[13px] text-ink-2">
+                              {lines.map((l) => `${l.name}: ${l.items.filter((i) => i.classIds.includes(c.id)).map((i) => subjectById.get(i.subjectId)?.name).join(' / ')}`).join('; ')}
+                            </p>
+                          )}
                           {plan && (
                             <p className="mt-2 text-[13px] text-ink-2">
                               Labs: groups A–{groupName(plan.groups - 1)}, {labs} periods a week
@@ -105,7 +116,7 @@ export function ClassesPage() {
                             </p>
                           )}
                           <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-                            {valid.map((i) => {
+                            {own.map((i) => {
                               const s = subjectById.get(i.subjectId)
                               return s ? (
                                 <li key={i.subjectId} className="flex items-center gap-1.5 text-ink-2">
@@ -244,8 +255,12 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const offered = (id: string) => isOffered(subjectById.get(id), grade)
   // Labs come from the Lab and Practical part of the Subjects page.
-  const plan = labPlan({ id: '', grade, section: '', curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById)
-  const used = items.reduce((n, i) => n + (offered(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan)
+  const plan = labPlan({ id: cls?.id ?? '', grade, section: '', curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById, data)
+  // Subjects this class takes in an option line are scheduled there.
+  const lines = cls ? linesOf(data, cls.id) : []
+  const lineOf = (subjectId: string) => lines.find((l) => l.items.some((i) => i.subjectId === subjectId && i.classIds.includes(cls!.id)))
+  const linePeriods = lines.reduce((n, l) => n + linePeriodsFor(l, cls!.id), 0)
+  const used = items.reduce((n, i) => n + (offered(i.subjectId) && !lineOf(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan) + linePeriods
   const junior = grade <= settings.juniorMaxGrade
 
   const sectionError = nameTaken(section, grade, classes.filter((c) => c.id !== cls?.id))
@@ -266,6 +281,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const available = subjects.filter((s) => isOffered(s, grade))
   const unused = available.filter((s) => !items.some((i) => i.subjectId === s.id))
   const update = (idx: number, patch: Partial<CurriculumItem>) => setItems((xs) => xs.map((x, i) => (i === idx ? { ...x, ...patch } : x)))
+  /** Teachers sharing a subject, with their periods; the subject's periods are their total. One left = a plain choice again. */
+  const setShares = (idx: number, shares: TeacherShare[]) =>
+    update(idx, shares.length > 1
+      ? { teachers: shares, pinnedTeacherId: null, periods: shares.reduce((n, s) => n + s.periods, 0) }
+      : { teachers: undefined, pinnedTeacherId: shares[0]?.teacherId ?? null, periods: shares[0]?.periods ?? items[idx].periods })
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -336,17 +356,62 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
                       <option key={s.id} value={s.id}>{s.name}{isOffered(s, grade) ? '' : ` (not taught in class ${grade})`}</option>
                     ))}
                   </Select>
-                  <Stepper label={`${subjects.find((s) => s.id === item.subjectId)?.name ?? 'subject'} periods per week`} value={item.periods} min={1} max={slots} onChange={(n) => update(idx, { periods: n })} />
-                  <Select aria-label="Teacher" className="col-span-2 sm:col-span-1" value={item.pinnedTeacherId ?? ''} onChange={(e) => update(idx, { pinnedTeacherId: e.target.value || null })}>
-                    <option value="">Any suitable teacher</option>
-                    {sorted.map((t) => {
-                      const tier = tierOf(t, item.subjectId)
-                      return <option key={t.id} value={t.id}>{t.name}{tier === 'primary' ? ' (main subject)' : tier === 'secondary' ? ' (extra subject)' : ''}</option>
-                    })}
-                  </Select>
+                  {lineOf(item.subjectId) ? (
+                    <p className="col-span-2 px-2 text-[13px] text-ink-2 sm:col-span-2">
+                      Taught in <strong className="font-medium text-ink">{lineOf(item.subjectId)!.name}</strong>. Its periods and teachers are set there.
+                    </p>
+                  ) : (
+                    <>
+                      {(item.teachers?.length ?? 0) > 1 ? (
+                        <span className="px-3 font-mono text-sm tabular-nums text-ink-2" title="The teachers' periods added up">
+                          {item.periods} <span className="font-sans">periods</span>
+                        </span>
+                      ) : (
+                        <Stepper
+                          label={`${subjects.find((s) => s.id === item.subjectId)?.name ?? 'subject'} periods per week`}
+                          value={item.periods} min={1} max={slots}
+                          onChange={(n) => update(idx, { periods: n })}
+                        />
+                      )}
+                      {(item.teachers?.length ?? 0) > 1 ? (
+                        <p className="col-span-2 self-center px-1 text-[13px] text-ink-2 sm:col-span-1">Shared by {item.teachers!.length} teachers</p>
+                      ) : (
+                        <div className="col-span-2 flex gap-1 sm:col-span-1">
+                          <Select aria-label="Teacher" className="min-w-0 flex-1" value={item.pinnedTeacherId ?? ''} onChange={(e) => update(idx, { pinnedTeacherId: e.target.value || null })}>
+                            <option value="">Any suitable teacher</option>
+                            {sorted.map((t) => {
+                              const tier = tierOf(t, item.subjectId)
+                              return <option key={t.id} value={t.id}>{t.name}{tier === 'primary' ? ' (main subject)' : tier === 'secondary' ? ' (extra subject)' : ''}</option>
+                            })}
+                          </Select>
+                          <IconButton
+                            label={`Share ${subjectById.get(item.subjectId)?.name ?? 'subject'} between teachers`}
+                            disabled={sorted.length < 2}
+                            onClick={() => {
+                              const first = item.pinnedTeacherId ?? sorted[0].id
+                              const second = sorted.find((t) => t.id !== first)!.id
+                              const half = Math.ceil(item.periods / 2)
+                              setShares(idx, [{ teacherId: first, periods: half }, { teacherId: second, periods: Math.max(1, item.periods - half) }])
+                            }}
+                          >
+                            <UsersThree weight="light" />
+                          </IconButton>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <IconButton label={`Remove ${subjectById.get(item.subjectId)?.name ?? 'subject'}`} className="col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto" onClick={() => removeItem(idx)}>
                     <X weight="light" />
                   </IconButton>
+                  {!lineOf(item.subjectId) && (item.teachers?.length ?? 0) > 1 && (
+                    <TeacherShares
+                      subjectName={subjectById.get(item.subjectId)?.name ?? 'subject'}
+                      shares={item.teachers!}
+                      choices={sorted.map((t) => ({ id: t.id, name: t.name }))}
+                      max={slots}
+                      onChange={(shares) => setShares(idx, shares)}
+                    />
+                  )}
                   {!offered(item.subjectId) && (
                     <p className="col-span-full px-2 pb-1 text-[13px] leading-snug text-warn">
                       {subjectById.get(item.subjectId)?.name} is only taught in classes {formatGrades(subjectById.get(item.subjectId)?.grades ?? [])}, so it will be left out. Remove it, or change its classes on the Subjects page.
@@ -422,6 +487,40 @@ function LabRotation({ plan, byId }: { plan: LabPlan; byId: Map<string, Subject>
         </table>
       </div>
     </section>
+  )
+}
+
+/** Option lines that include a class. */
+function linesOf(data: SchoolData, classId: string) {
+  return validLines(data).filter((l) => l.items.some((i) => i.classIds.includes(classId)))
+}
+
+/** Teachers sharing one subject in a class, each with their periods. */
+function TeacherShares({ subjectName, shares, choices, max, onChange }: {
+  subjectName: string
+  shares: TeacherShare[]
+  choices: { id: string; name: string }[]
+  max: number
+  onChange: (shares: TeacherShare[]) => void
+}) {
+  const set = (k: number, patch: Partial<TeacherShare>) => onChange(shares.map((s, i) => (i === k ? { ...s, ...patch } : s)))
+  const unused = choices.filter((c) => !shares.some((s) => s.teacherId === c.id))
+  return (
+    <div className="col-span-full flex flex-col gap-2 rounded-core bg-surface/60 p-2">
+      <p className="px-1 text-[13px] text-ink-2">{subjectName} is shared. Choose each teacher and the periods they take:</p>
+      {shares.map((s, k) => (
+        <div key={k} className="flex flex-wrap items-center gap-2">
+          <Select aria-label={`Teacher ${k + 1}`} className="min-w-0 flex-1" value={s.teacherId} onChange={(e) => set(k, { teacherId: e.target.value })}>
+            {choices.filter((c) => c.id === s.teacherId || !shares.some((x) => x.teacherId === c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Stepper label={`periods for teacher ${k + 1}`} value={s.periods} min={1} max={max} onChange={(n) => set(k, { periods: n })} />
+          <IconButton label={`Remove teacher ${k + 1}`} onClick={() => onChange(shares.filter((_, i) => i !== k))}><X weight="light" /></IconButton>
+        </div>
+      ))}
+      <Button size="sm" variant="ghost" className="self-start" icon={<Plus weight="bold" />} disabled={unused.length === 0} onClick={() => onChange([...shares, { teacherId: unused[0].id, periods: 1 }])}>
+        Add Teacher
+      </Button>
+    </div>
   )
 }
 
