@@ -3,7 +3,9 @@ import { BookOpenText, Check, Flask, PencilSimple, Plus, Trash } from '@phosphor
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, IconButton, Input, PageHeader, Segmented, Select, Shell, Stepper, ToggleChip, cx } from '../../components/ui'
 import { className } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
-import { DEFAULT_LAB, DEFAULT_LAB_GRADES, groupNames, isLab } from '../../engine/labs'
+import { lineSubjects } from '../../engine/lines'
+import { describeWeek, weekUse } from '../../engine/week'
+import { DEFAULT_LAB, DEFAULT_LAB_GRADES, classLabs, groupNames, isLab } from '../../engine/labs'
 import { DEFAULT_SUBJECT_PERIODS, GRADE_OPTIONS, formatGrades, syncSubjectClasses } from '../../engine/grades'
 import type { LabInfo, Subject } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
@@ -214,6 +216,12 @@ function LabForm({ subject, choices, onDone }: { subject: Subject | null; choice
   const [lab, setLab] = useState<LabInfo>(subject?.lab ?? { ...DEFAULT_LAB, periods: Math.min(DEFAULT_LAB.periods, periodsPerDay), grades: startGrades(chosen) })
   const set = (patch: Partial<LabInfo>) => setLab((l) => ({ ...l, ...patch }))
   const [tried, setTried] = useState(false)
+  // What saving would do to each class that gets this lab.
+  const data = useStore((s) => s.data)
+  const draft = { ...data, subjects: subjects.map((s) => (s.id === subjectId ? { ...s, lab } : s)) }
+  const affected = [...data.classes]
+    .filter((c) => lab.grades.includes(c.grade) && (c.curriculum.some((i) => i.subjectId === subjectId) || lineSubjects(draft, c.id).has(subjectId)))
+    .sort((a, b) => a.grade - b.grade || a.section.localeCompare(b.section))
   const gradesError = lab.grades.length === 0 ? 'Choose at least one class.' : undefined
 
   const submit = (e: React.FormEvent) => {
@@ -250,16 +258,41 @@ function LabForm({ subject, choices, onDone }: { subject: Subject | null; choice
         <Field label="Number of groups" htmlFor="lab-groups" hint={`Groups ${groupNames(lab.groups)}.`}>
           <Stepper id="lab-groups" label="number of groups" value={lab.groups} min={1} max={10} onChange={(n) => set({ groups: n })} />
         </Field>
-        <Field label="Sessions a week" htmlFor="lab-sessions" hint="For each group.">
-          <Stepper id="lab-sessions" label="lab sessions a week for each group" value={lab.sessions} min={1} max={5} onChange={(n) => set({ sessions: n })} />
+        <Field label="Times a week" htmlFor="lab-sessions" hint={lab.sessions === 1 ? 'Each group does this lab once a week.' : `Each group does this lab ${lab.sessions} times a week.`}>
+          <Stepper id="lab-sessions" label="times each group does this lab in a week" value={lab.sessions} min={1} max={5} onChange={(n) => set({ sessions: n })} />
         </Field>
-        <Field label="Session length" htmlFor="lab-len" hint={lab.periods === 1 ? 'One period.' : `${lab.periods} periods in a row.`}>
+        <Field label="Session length" htmlFor="lab-len" hint={lab.periods === 1 ? 'One period each time.' : `${lab.periods} periods in a row each time.`}>
           <Stepper id="lab-len" label="lab session length in periods" value={lab.periods} min={1} max={Math.max(1, periodsPerDay)} onChange={(n) => set({ periods: n })} />
         </Field>
         <Field label="Number of labs" htmlFor="lab-rooms" hint="Lab rooms the school has for it.">
           <Stepper id="lab-rooms" label="number of lab rooms" value={lab.rooms} min={1} max={10} onChange={(n) => set({ rooms: n })} />
         </Field>
       </div>
+      {affected.length > 0 && (
+        <div aria-live="polite" className="rounded-core bg-shell/70 px-4 py-3 text-[13px]">
+          <p className="font-medium">What this means for each class</p>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {affected.map((c) => {
+              const w = weekUse(draft, c)
+              const times = w.plan?.blocks.length ?? 0
+              // Other labs of the class that run more often keep extra lab times.
+              const draftById = new Map(draft.subjects.map((s) => [s.id, s]))
+              const oftener = classLabs(c, draftById, draft).filter((s) => s.id !== subjectId && s.lab!.sessions > lab.sessions)
+              return (
+                <li key={c.id} className={w.total > w.slots ? 'text-danger' : 'text-ink-2'}>
+                  <span className="font-medium text-ink">{className(c)}:</span> {times} lab {times === 1 ? 'time' : 'times'} a week (all its labs together). {describeWeek(w)}
+                  {w.total > w.slots && ` — ${w.total - w.slots} too many`}
+                  {oftener.length > 0 && (
+                    <span className="block text-ink-3">
+                      {oftener.map((s) => s.name).join(' and ')} {oftener.length === 1 ? 'runs' : 'run'} {oftener[0].lab!.sessions} times a week, so {oftener.length === 1 ? 'it keeps' : 'they keep'} extra lab times. Change {oftener.length === 1 ? 'it' : 'them'} too.
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
       <div className="-mx-6 -mb-4 flex justify-end gap-2 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onDone}>Cancel</Button>
         <Button variant="primary" type="submit" disabled={!chosen}>{subject ? 'Save Changes' : 'Add Lab'}</Button>

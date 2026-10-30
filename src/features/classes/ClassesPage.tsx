@@ -5,8 +5,9 @@ import { canTake, className, isJunior, tierOf } from '../../engine/assign'
 import { slotsPerWeek } from '../../engine/blocks'
 import { curriculumFor, formatGrades, isOffered } from '../../engine/grades'
 import { cleanSection, nextSection, sameSection } from '../../engine/sections'
-import { groupName, labPeriods, labPlan, type LabPlan } from '../../engine/labs'
-import { linePeriodsFor, validLines } from '../../engine/lines'
+import { groupName, labPeriods, type LabPlan } from '../../engine/labs'
+import { validLines } from '../../engine/lines'
+import { describeWeek, weekUse } from '../../engine/week'
 import type { ClassSection, CurriculumItem, SchoolData, Subject, TeacherShare } from '../../engine/types'
 import { uid, useStore } from '../../store/store'
 
@@ -69,13 +70,11 @@ export function ClassesPage() {
                 {list.map((c) => {
                   const misplaced = c.curriculum.filter((i) => !isOffered(subjectById.get(i.subjectId), c.grade))
                   const valid = c.curriculum.filter((i) => isOffered(subjectById.get(i.subjectId), c.grade))
-                  const plan = labPlan({ ...c, curriculum: valid }, subjectById, data)
-                  const labs = labPeriods(plan)
+                  const week = weekUse(data, c)
+                  const { plan, labs, lines: linePeriods, total: used } = week
                   const lines = linesOf(data, c.id)
                   const inLine = new Set(lines.flatMap((l) => l.items.filter((i) => i.classIds.includes(c.id)).map((i) => i.subjectId)))
                   const own = valid.filter((i) => !inLine.has(i.subjectId))
-                  const linePeriods = lines.reduce((n, l) => n + linePeriodsFor(l, c.id), 0)
-                  const used = own.reduce((n, i) => n + i.periods, 0) + labs + linePeriods
                   const over = used > slots
                   return (
                     <li key={c.id}>
@@ -106,8 +105,11 @@ export function ClassesPage() {
                           )}
                           {plan && (
                             <p className="mt-2 text-[13px] text-ink-2">
-                              Labs: groups A–{groupName(plan.groups - 1)}, {labs} periods a week
+                              Labs: groups A–{groupName(plan.groups - 1)}, {plan.blocks.length} lab {plan.blocks.length === 1 ? 'time' : 'times'} a week
                             </p>
+                          )}
+                          {(plan || lines.length > 0) && (
+                            <p className={cx('mt-1 font-mono text-[13px] tabular-nums', over ? 'text-danger' : 'text-ink-3')}>{describeWeek(week)}</p>
                           )}
                           {over && <p className="mt-2 text-[13px] text-danger">{used - slots} more than the week has. Remove some periods.</p>}
                           {misplaced.length > 0 && (
@@ -255,12 +257,11 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
   const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const offered = (id: string) => isOffered(subjectById.get(id), grade)
   // Labs come from the Lab and Practical part of the Subjects page.
-  const plan = labPlan({ id: cls?.id ?? '', grade, section: '', curriculum: items.filter((i) => offered(i.subjectId)) }, subjectById, data)
   // Subjects this class takes in an option line are scheduled there.
   const lines = cls ? linesOf(data, cls.id) : []
   const lineOf = (subjectId: string) => lines.find((l) => l.items.some((i) => i.subjectId === subjectId && i.classIds.includes(cls!.id)))
-  const linePeriods = lines.reduce((n, l) => n + linePeriodsFor(l, cls!.id), 0)
-  const used = items.reduce((n, i) => n + (offered(i.subjectId) && !lineOf(i.subjectId) ? i.periods : 0), 0) + labPeriods(plan) + linePeriods
+  const week = weekUse(data, { id: cls?.id ?? '', grade, section: '', curriculum: items })
+  const { plan, total: used } = week
   const junior = grade <= settings.juniorMaxGrade
 
   const sectionError = nameTaken(section, grade, classes.filter((c) => c.id !== cls?.id))
@@ -336,6 +337,9 @@ function ClassForm({ cls, onDone }: { cls: ClassSection | null; onDone: () => vo
             {used > slots && <span className="font-sans"> (too many)</span>}
           </p>
         </div>
+        {(week.labs > 0 || week.lines > 0) && (
+          <p className={cx('mt-1 font-mono text-[13px] tabular-nums', used > slots ? 'text-danger' : 'text-ink-3')}>{describeWeek(week)}</p>
+        )}
 
         {!cls && items.length > 0 && (
           <p className="mt-1 text-[13px] text-ink-3">
